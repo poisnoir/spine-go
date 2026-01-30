@@ -16,13 +16,14 @@ type Subscriber[K any] struct {
 	subscribedTo string
 	handler      func(K)
 	isConnected  *utils.SafeVar[bool]
+	namespace    *Namespace
 	ctx          context.Context
 	cancel       context.CancelFunc
 }
 
-func NewSubscriber[K any](name string, publisherName string, handler func(K)) (*Subscriber[K], error) {
+func NewSubscriber[K any](namespace *Namespace, name string, publisherName string, handler func(K)) (*Subscriber[K], error) {
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	sub := &Subscriber[K]{
 		name:         name,
@@ -42,7 +43,7 @@ func (s *Subscriber[K]) start() {
 	defer s.cancel()
 
 	// waits until ctx expires or errors out in zero conf
-	address, err := GetPublisher(s.ctx, s.subscribedTo)
+	address, err := s.namespace.GetPublisher(s.ctx, s.subscribedTo)
 	if err != nil {
 		// log the error
 		return

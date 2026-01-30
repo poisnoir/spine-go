@@ -1,6 +1,7 @@
 package botzilla
 
 import (
+	"bytes"
 	"context"
 	"time"
 
@@ -12,27 +13,34 @@ import (
 )
 
 type Service[K any, V any] struct {
-	name     string
-	server   *zeroconf.Server
-	listener *tcp.Listener[K, V]
+	name      string
+	server    *zeroconf.Server
+	listener  *tcp.Listener[K, V]
+	namespace *Namespace
+	context   context.Context
+	cancel    context.CancelFunc
 }
 
-func NewService[K any, V any](name string, maxHandler uint32, handler func(K) (V, error)) (*Service[K, V], error) {
+func NewService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*Service[K, V], error) {
 
-	logger := GetLogger().With(
-		"service", name,
-		"component", "registry",
+	logger := namespace.logger.With(
+		namespace.Name(),
+		"service",
+		name,
 	)
 
-	listener, err := tcp.NewListener(handler, maxHandler, logger)
+	ctx, cancel := context.WithCancel(namespace.ctx)
+
+	listener, err := tcp.NewListener(handler, 1, logger, ctx)
 	if err != nil {
+		cancel()
 		logger.Error("failed to create listener", "error", err)
 		return nil, err
 	}
 
 	server, err := zeroconf.Register(
-		name+globals.ZERO_CONF_SERVICE_PREFIX,
-		globals.ZERO_CONF_SERVICE,
+		globals.ZERO_CONF_SERVICE_PREFIX+name,
+		namespace.Name()+globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Port(),
 		[]string{"id=botzilla_service_" + name},
@@ -40,6 +48,7 @@ func NewService[K any, V any](name string, maxHandler uint32, handler func(K) (V
 	)
 
 	if err != nil {
+		cancel()
 		logger.Error("unable to register service to zeroconf", "error", err)
 		return nil, err
 	}
@@ -47,30 +56,47 @@ func NewService[K any, V any](name string, maxHandler uint32, handler func(K) (V
 	go listener.Start()
 
 	return &Service[K, V]{
-		name:     name,
-		server:   server,
-		listener: listener,
+		name:      name,
+		server:    server,
+		listener:  listener,
+		namespace: namespace,
+		context:   ctx,
+		cancel:    cancel,
 	}, nil
+}
+
+func (s *Service[K, V]) Close() {
+	s.cancel()
 }
 
 func (s *Service[K, V]) Name() string {
 	return s.name
 }
 
-func Call[K any, V any](ctx context.Context, serviceName string, payload K) (V, error) {
+func Call[K any, V any](namespace *Namespace, ctx context.Context, serviceName string, payload K) (result V, failed error) {
 
-	logger := GetLogger().With(
-		"operation", "rpc_call",
-		"target_service", serviceName,
+	logger := namespace.logger.With(
+		namespace.Name(),
+		"service_call",
+		"target_service",
+		serviceName,
 	)
 
 	var response V
 
-	serviceIP, err := GetService(ctx, serviceName)
+	serviceIP, err := namespace.GetService(ctx, serviceName)
 	if err != nil {
 		logger.ErrorContext(ctx, "service discovery failed", "error", err)
 		return response, err
 	}
+
+	defer func() {
+		// somehow service failed
+		// we will update catch to rediscover the service
+		if err != nil {
+			namespace.reg.RemoveOnFailure(serviceName)
+		}
+	}()
 
 	encodedRequestPayload, err := msgpack.Marshal(payload)
 	if err != nil {
@@ -90,7 +116,11 @@ func Call[K any, V any](ctx context.Context, serviceName string, payload K) (V, 
 		return response, err
 	}
 
-	err = msgpack.Unmarshal(encodedResponsePayload, &response)
+	buf := bytes.NewBuffer(encodedResponsePayload)
+	dec := msgpack.NewDecoder(buf)
+
+	dec.SetCustomStructTag("msgpack")
+	err = dec.Decode(&response)
 	if err != nil {
 		logger.ErrorContext(ctx, "response unmarshal failed", "error", err)
 	}

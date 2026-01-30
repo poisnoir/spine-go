@@ -18,13 +18,13 @@ func main() {
 		}),
 	)
 
-	err := botzilla.Start(false, "meow", logger)
+	mecca500, err := botzilla.JointNamespace("mecca500", "meow", logger, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), time.Second)
-	output, err := botzilla.Call[string, int32](ctx, "s1", "amir")
+	output, err := botzilla.Call[string, int](mecca500, ctx, "s1", "amir")
 
 	if err != nil {
 		log.Fatal(err)

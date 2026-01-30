@@ -15,29 +15,33 @@ import (
 type Publisher[K any] struct {
 	name        string
 	subscribers *utils.SafeArr[*client[K]] // multiple threads are accessing the arr
-	listener    net.Listener               // used for incoming messages
+	listener    *net.UDPConn               // used for incoming messages
 	server      *zeroconf.Server
 }
 
 func NewPublisher[K any](name string) (*Publisher[K], error) {
 
-	listener, err := net.Listen("tcp", ":0")
+	addr, err := net.ResolveUDPAddr("udp", ":0")
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		return nil, err
 	}
 
 	server, err := zeroconf.Register(
 		name+globals.ZERO_CONF_PUBLISHER_PREFIX,
-		globals.ZERO_CONF_SERVICE,
+		globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
-		listener.Addr().(*net.TCPAddr).Port,
-		[]string{"id=botzilla_service_" + name},
+		addr.Port,
+		[]string{"id=botzilla_publish_" + name},
 		nil,
 	)
 
 	p := &Publisher[K]{
 		name:     name,
-		listener: listener,
+		listener: conn,
 		server:   server,
 	}
 
