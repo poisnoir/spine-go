@@ -9,8 +9,14 @@ It provides ROS-like communication patterns—Services (RPC) and Pub/Sub—built
 # Architecture
 Botzilla treats every component as a standalone Entity. 
 Whether you are running a single monolithic binary or a distributed swarm of microservices, discovery and connectivity are handled transparently at the library level.
+<<<<<<< HEAD
 - `Services`: Synchronous Request/Response (TCP).
 - `Publishers/Subscribers`: Asynchronous broadcast (UDP).
+=======
+- `Service/ServiceCaller`: Synchronous Request/Response (UDP).
+- `Publishers/Subscribers`: Asynchronous broadcast (UDP).
+- `Streamer` (Planed)
+>>>>>>> 579fa34 (added mad and kcp)
 - Namespaces: Virtual silos that group related services and prevent cross-talk.
 
 All components are automatically discovered on the local network using `zeroconf`.
@@ -24,6 +30,10 @@ All communication happens within a secured namespace.
 ```go
     logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
     // Join a namespace with a secret key and encryption disabled
+<<<<<<< HEAD
+=======
+    // If encryption is false, hmac is used for authentication
+>>>>>>> 579fa34 (added mad and kcp)
     ns, err := botzilla.JointNamespace("mecca500", "secret_meow", logger, false)
 ```
 
@@ -42,10 +52,19 @@ Turn any Go function into a network-discoverable service.
 ### 3. Call a Service
 Call services from any machine on the network using the same generic types.
 ```go
+<<<<<<< HEAD
     ctx, _ := context.WithTimeout(context.Background(), time.Second)
 
     // Type-safe call: Call[Input, Output]
     result, err := botzilla.Call[string, int](ns, ctx, "string_length", "amir")
+=======
+    // will error if types are mismatched with the service or service doesn't exist
+    c, err := NewServiceCaller[string, int](ns, "string_length", ctx)
+	
+		// will error if it can't get result before context cancels
+		result, err := c.Call("hello world", ctx)
+	
+>>>>>>> 579fa34 (added mad and kcp)
 ```
 
 
@@ -66,7 +85,7 @@ Publishers and Subscribers allow for asynchronous data flow. Connections are est
 
 # Dependencies
 - zeroconf https://github.com/grandcat/zeroconf: Service discovery
-- MessagePack: Binary serialization
+- backoff https://github.com/cenkalti/backoff/v5: retry mechanism
 
 # Contribution
 Feel free to contribute or suggest features. Contact: @rima1881

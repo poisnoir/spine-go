@@ -1,24 +1,23 @@
-package botzilla
+package spine
 
 import (
-	"bytes"
 	"context"
-	"time"
 
-	"github.com/Pois-Noir/Botzilla/internal/globals"
-	"github.com/Pois-Noir/Botzilla/internal/tcp"
 	"github.com/grandcat/zeroconf"
-
-	"github.com/vmihailenco/msgpack/v5"
+	"github.com/poisnoir/mad-go"
+	"github.com/poisnoir/spine-go/internal/globals"
 )
 
 type Service[K any, V any] struct {
-	name      string
-	server    *zeroconf.Server
-	listener  *tcp.Listener[K, V]
-	namespace *Namespace
-	context   context.Context
-	cancel    context.CancelFunc
+	name         string
+	server       *zeroconf.Server
+	namespace    *Namespace
+	context      context.Context
+	cancel       context.CancelFunc
+	handler      func(K) (V, error)
+	keyEncoder   *mad.Mad[K]
+	valueEncoder *mad.Mad[V]
+	requests     chan K
 }
 
 func NewService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*Service[K, V], error) {
@@ -27,22 +26,16 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		namespace.Name(),
 		"service",
 		name,
+		"service registry",
 	)
 
 	ctx, cancel := context.WithCancel(namespace.ctx)
-
-	listener, err := tcp.NewListener(handler, 1, logger, ctx)
-	if err != nil {
-		cancel()
-		logger.Error("failed to create listener", "error", err)
-		return nil, err
-	}
 
 	server, err := zeroconf.Register(
 		globals.ZERO_CONF_SERVICE_PREFIX+name,
 		namespace.Name()+globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
-		listener.Port(),
+		0,
 		[]string{"id=botzilla_service_" + name},
 		nil,
 	)
@@ -53,16 +46,48 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		return nil, err
 	}
 
-	go listener.Start()
-
-	return &Service[K, V]{
+	s := &Service[K, V]{
 		name:      name,
 		server:    server,
-		listener:  listener,
 		namespace: namespace,
 		context:   ctx,
 		cancel:    cancel,
-	}, nil
+		requests:  make(chan K, 100),
+	}
+
+	go s.handleRequest()
+	return s, nil
+}
+
+func (s *ServiceCaller[K, V]) handlePackets() {
+
+}
+
+func (s *Service[K, V]) handleRequest() {
+
+	logger := s.namespace.logger.With(
+		s.namespace.Name(),
+		"service",
+		s.name,
+		"request handler",
+	)
+
+	for {
+		select {
+		case request := <-s.requests:
+			response, err := s.handler(request)
+			if err != nil {
+				logger.Error("unable to handle request", "error", err)
+			}
+			s.namespace.logger.Info("handled request", "request", request, "response", response)
+		case <-s.context.Done():
+			return
+		}
+	}
+}
+
+func (s *Service[K, V]) Close() {
+	s.cancel()
 }
 
 func (s *Service[K, V]) Close() {
@@ -71,60 +96,4 @@ func (s *Service[K, V]) Close() {
 
 func (s *Service[K, V]) Name() string {
 	return s.name
-}
-
-func Call[K any, V any](namespace *Namespace, ctx context.Context, serviceName string, payload K) (result V, failed error) {
-
-	logger := namespace.logger.With(
-		namespace.Name(),
-		"service_call",
-		"target_service",
-		serviceName,
-	)
-
-	var response V
-
-	serviceIP, err := namespace.GetService(ctx, serviceName)
-	if err != nil {
-		logger.ErrorContext(ctx, "service discovery failed", "error", err)
-		return response, err
-	}
-
-	defer func() {
-		// somehow service failed
-		// we will update catch to rediscover the service
-		if err != nil {
-			namespace.reg.RemoveOnFailure(serviceName)
-		}
-	}()
-
-	encodedRequestPayload, err := msgpack.Marshal(payload)
-	if err != nil {
-		logger.ErrorContext(ctx, "request marshal failed", "error", err)
-		return response, err
-	}
-
-	start := time.Now()
-	encodedResponsePayload, err := tcp.Request(ctx, serviceIP, encodedRequestPayload)
-	duration := time.Since(start)
-	if err != nil {
-		logger.ErrorContext(ctx, "network request failed",
-			"ip", serviceIP,
-			"duration_ms", duration.Milliseconds(),
-			"error", err,
-		)
-		return response, err
-	}
-
-	buf := bytes.NewBuffer(encodedResponsePayload)
-	dec := msgpack.NewDecoder(buf)
-
-	dec.SetCustomStructTag("msgpack")
-	err = dec.Decode(&response)
-	if err != nil {
-		logger.ErrorContext(ctx, "response unmarshal failed", "error", err)
-	}
-
-	logger.DebugContext(ctx, "service call successful", "duration_ms", duration.Milliseconds())
-	return response, err
 }

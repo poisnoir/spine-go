@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 
-	"github.com/Pois-Noir/Botzilla/internal/globals"
+	"github.com/poisnoir/spine-go/internal/globals"
 )
 
 func GenerateHMAC(data []byte, key []byte) [globals.HASH_LENGTH]byte {

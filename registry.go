@@ -1,4 +1,4 @@
-package botzilla
+package spine
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Pois-Noir/Botzilla/internal/globals"
 	"github.com/grandcat/zeroconf"
+	"github.com/poisnoir/spine-go/internal/globals"
 )
 
 // Todo

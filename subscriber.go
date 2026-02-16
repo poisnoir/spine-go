@@ -1,21 +1,13 @@
-package botzilla
+package spine
 
 import (
 	"context"
-	"io"
-	"net"
-
-	"github.com/Pois-Noir/Botzilla/internal/globals"
-	"github.com/Pois-Noir/Botzilla/internal/tcp"
-	"github.com/Pois-Noir/Botzilla/internal/utils"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 type Subscriber[K any] struct {
 	name         string
 	subscribedTo string
 	handler      func(K)
-	isConnected  *utils.SafeVar[bool]
 	namespace    *Namespace
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -29,7 +21,6 @@ func NewSubscriber[K any](namespace *Namespace, name string, publisherName strin
 		name:         name,
 		subscribedTo: publisherName,
 		handler:      handler,
-		isConnected:  utils.NewSafeVar(false),
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -48,7 +39,6 @@ func (s *Subscriber[K]) start() {
 		// log the error
 		return
 	}
-	s.isConnected.Set(true)
 
 	// waits until ctx expires or errors out in connection
 	// todo
@@ -69,44 +59,8 @@ func (s *Subscriber[K]) SubscribedTo() string {
 	return s.subscribedTo
 }
 
-func (s *Subscriber[K]) IsConnected() bool {
-	return s.isConnected.Get()
-}
-
 func (s *Subscriber[K]) connect(address string) error {
-	d := net.Dialer{}
-	conn, err := d.DialContext(s.ctx, "tcp", address)
-	if err != nil {
-		return err
-	}
-
-	defer conn.Close()
-
-	var headerBuf [globals.HEADER_LENGTH]byte
 
 	for {
-		if _, err := io.ReadFull(conn, headerBuf[:]); err != nil {
-			return err
-		}
-
-		header, err := tcp.Decode(headerBuf[:])
-		if err != nil {
-			return err
-		}
-
-		// Read payload
-		payload := make([]byte, header.PayloadLength)
-		if _, err := io.ReadFull(conn, payload); err != nil {
-			return err
-		}
-
-		// Unmarshal and call handler
-		var data K
-		if err := msgpack.Unmarshal(payload, &data); err != nil {
-			continue // Skip malformed messages
-		}
-
-		// Call user handler
-		s.handler(data)
 	}
 }
