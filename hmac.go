@@ -6,7 +6,9 @@ import (
 )
 
 func generateHmac(key []byte, data []byte) []byte {
-	return hmac.New(sha256.New, key).Sum(data)
+	h := hmac.New(sha256.New, key)
+	h.Write(data)
+	return h.Sum(nil)
 }
 
 func verifyHmac(key []byte, data []byte, expected []byte) bool {

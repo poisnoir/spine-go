@@ -13,6 +13,8 @@ type ServiceCaller[K any, V any] struct {
 	serviceName  string
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string, ctx context.Context) (*ServiceCaller[K, V], error) {
@@ -21,6 +23,7 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string, ct
 	if err != nil {
 		return nil, err
 	}
+
 	valueEnc, err := mad.NewMad[V]()
 	if err != nil {
 		return nil, err
@@ -31,45 +34,40 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string, ct
 		return nil, err
 	}
 
-	bufPtr := namespace.bufferPool.Get().(*[]byte)
-	tmpBuf := (*bufPtr)[:0]
-	defer func() {
-		*bufPtr = tmpBuf
-		namespace.bufferPool.Put(bufPtr)
-	}()
-
 	payload := []byte(keyEnc.Code())
-	if namespace.enyption == nil {
+	if namespace.encryption == nil {
 		signature := generateHmac([]byte(namespace.secretKey), payload)
-		tmpBuf = append(tmpBuf, signature...)
+		payload = append(payload, signature...)
 	}
-	tmpBuf = append(tmpBuf, payload...)
 
-	err = request(ctx, ipAddress, &tmpBuf, namespace.enyption)
+	err = request(ctx, ipAddress, &payload, namespace.encryption, []byte(namespace.secretKey))
 	if err != nil {
 		return nil, err
 	}
 
-	if namespace.enyption == nil {
-		if len(tmpBuf) < 32 {
+	if namespace.encryption == nil {
+		if len(payload) < 32 {
 			return nil, fmt.Errorf("response too short")
 		}
-		sig, data := tmpBuf[:32], tmpBuf[32:]
+		data, sig := payload[:len(payload)-32], payload[len(payload)-32:]
 		if !verifyHmac([]byte(namespace.secretKey), data, sig) {
 			return nil, fmt.Errorf("corrupted response: HMAC mismatch")
 		}
-		tmpBuf = data
+		payload = data
 	}
 
-	if slices.Equal(tmpBuf, []byte(valueEnc.Code())) {
+	if !slices.Equal(payload, []byte(valueEnc.Code())) {
 		return nil, fmt.Errorf("service layout does not match service listener layout")
 	}
 
+	ctx, cancel := context.WithCancel(namespace.ctx)
 	return &ServiceCaller[K, V]{
 		namespace:    namespace,
 		keyEncoder:   keyEnc,
 		valueEncoder: valueEnc,
 		serviceName:  serviceName,
+		ctx:          ctx,
+		cancel:       cancel,
 	}, nil
 }
 
@@ -81,22 +79,28 @@ func (sc *ServiceCaller[K, V]) Call(key K, ctx context.Context) (V, error) {
 		return response, err
 	}
 
-	ptr := sc.namespace.bufferPool.Get().(*[]byte)
-	buff := *ptr
-	err = sc.keyEncoder.Encode(&key, buff)
+	bufPtr := sc.namespace.bufferPool.Get().(*[]byte)
+	payload := (*bufPtr)[:sc.keyEncoder.GetRequiredSize(&key)]
+	defer sc.namespace.bufferPool.Put(bufPtr)
+
+	err = sc.keyEncoder.Encode(&key, payload)
 	if err != nil {
-		return response, fmt.Errorf("payload is too large, max service payload size is 4kb")
+		return response, fmt.Errorf("failed to encode key: %w", err)
 	}
 
-	// Todo: Add Backoff mechanism
-	err = request(ctx, ipAddress, ptr, sc.namespace.enyption)
+	err = request(ctx, ipAddress, &payload, sc.namespace.encryption, []byte(sc.namespace.secretKey))
 	if err != nil {
-		return response, err
+		return response, fmt.Errorf("failed to send request: %w", err)
 	}
-	// err = sc.valueEncoder.Decode(buff[:bytesRead], &response)
+
+	err = sc.valueEncoder.Decode(payload, &response)
 	if err != nil {
 		return response, fmt.Errorf("failed to decode response: %w", err)
 	}
 
 	return response, nil
+}
+
+func (sc *ServiceCaller[K, V]) Close() {
+	sc.cancel()
 }
