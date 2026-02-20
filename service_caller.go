@@ -3,7 +3,6 @@ package spine
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/poisnoir/mad-go"
 )
@@ -27,37 +26,6 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string, ct
 	valueEnc, err := mad.NewMad[V]()
 	if err != nil {
 		return nil, err
-	}
-
-	ipAddress, err := namespace.GetService(serviceName, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := []byte(keyEnc.Code())
-	if namespace.encryption == nil {
-		signature := generateHmac([]byte(namespace.secretKey), payload)
-		payload = append(payload, signature...)
-	}
-
-	err = request(ctx, ipAddress, &payload, namespace.encryption, []byte(namespace.secretKey))
-	if err != nil {
-		return nil, err
-	}
-
-	if namespace.encryption == nil {
-		if len(payload) < 32 {
-			return nil, fmt.Errorf("response too short")
-		}
-		data, sig := payload[:len(payload)-32], payload[len(payload)-32:]
-		if !verifyHmac([]byte(namespace.secretKey), data, sig) {
-			return nil, fmt.Errorf("corrupted response: HMAC mismatch")
-		}
-		payload = data
-	}
-
-	if !slices.Equal(payload, []byte(valueEnc.Code())) {
-		return nil, fmt.Errorf("service layout does not match service listener layout")
 	}
 
 	ctx, cancel := context.WithCancel(namespace.ctx)

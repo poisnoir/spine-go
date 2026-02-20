@@ -21,7 +21,12 @@ type Service[K any, V any] struct {
 	handler      func(K) (V, error)
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
-	requests     chan K
+	requests     chan handlerRequest[K, V]
+}
+
+type handlerRequest[K any, V any] struct {
+	key    K
+	Result chan V
 }
 
 func NewService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*Service[K, V], error) {
@@ -58,7 +63,7 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		namespace.Name()+globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Addr().(*net.UDPAddr).Port,
-		[]string{"id=botzilla_service_" + name},
+		[]string{"id=spine_service_" + name},
 		nil,
 	)
 
@@ -77,10 +82,11 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		keyEncoder:   keyEnc,
 		valueEncoder: valueEnc,
 		cancel:       cancel,
-		requests:     make(chan K, 100),
+		requests:     make(chan handlerRequest[K, V], 100),
 	}
 
-	go s.handleRequest()
+	go s.runListener()
+	go s.runHandler()
 	return s, nil
 }
 
@@ -100,7 +106,7 @@ func (s *Service[K, V]) runListener() {
 			continue
 		}
 
-		go s.handlePacket(conn)
+		go s.handleClient(conn)
 	}
 
 }
@@ -113,11 +119,39 @@ func (s *Service[K, V]) handleClient(conn io.ReadWriteCloser) {
 		"client handler",
 	)
 
-	defer conn.Close()
+	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
+	defer s.namespace.bufferPool.Put(bufPtr)
+	n, err := conn.Read(*bufPtr)
+	if err != nil {
+		logger.Error("unable to read from connection", "error", err)
+		conn.Close()
+		return
+	}
+	var key K
+	err = s.keyEncoder.Decode((*bufPtr)[:n], &key)
+	if err != nil {
+		logger.Error("unable to decode key", "error", err)
+		conn.Close()
+		return
+	}
 
+	result := make(chan V, 1)
+	hr := handlerRequest[K, V]{
+		key:    key,
+		Result: result,
+	}
+
+	s.requests <- hr
+	res := <-result
+	// reseting buffer
+	(*bufPtr) = (*bufPtr)[:0]
+	s.valueEncoder.Encode(&res, *bufPtr)
+	conn.Write((*bufPtr)[:s.valueEncoder.GetRequiredSize(&res)])
+
+	defer conn.Close()
 }
 
-func (s *Service[K, V]) handleRequest() {
+func (s *Service[K, V]) runHandler() {
 
 	logger := s.namespace.logger.With(
 		s.namespace.Name(),
@@ -129,10 +163,12 @@ func (s *Service[K, V]) handleRequest() {
 	for {
 		select {
 		case request := <-s.requests:
-			response, err := s.handler(request)
+			response, err := s.handler(request.key)
 			if err != nil {
 				logger.Error("unable to handle request", "error", err)
+				// Todo: Change To return error instead of default
 			}
+			request.Result <- response
 			s.namespace.logger.Info("handled request", "request", request, "response", response)
 		case <-s.context.Done():
 			return

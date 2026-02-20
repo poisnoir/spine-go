@@ -63,8 +63,8 @@ Publishers and Subscribers allow for asynchronous data flow. Connections are est
 
     // Create a Subscriber
     sub, _ := spine.NewSubscriber[SensorData]("lidar_scan", func(data SensorData) {
-    fmt.Printf("Received data: %v\n", data)
-})
+        fmt.Printf("Received data: %v\n", data)
+    }
 ```
 
 # Dependencies
