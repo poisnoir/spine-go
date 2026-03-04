@@ -1,15 +1,16 @@
 package globals
 
 // Header
-const HEADER_LENGTH = 5
-const STATUS_CODE_INDEX = 0
-const MESSAGE_LENGTH_INDEX = 1
+const HEADER_LENGTH int = 5
+const STATUS_CODE_INDEX int = 0
+const MESSAGE_LENGTH_INDEX int = 1
 
 // Hash
-const HASH_LENGTH = 32
+const MAX_PACKET_SIZE int = 4096
 
 // Status Codes
 const OK_STATUS uint8 = 0
+const PING_CODE uint8 = 1
 const ERROR_INCORRECT_HASH uint8 = 255
 const ERROR_CORRUPT_PAYLOAD uint8 = 254
 const ERROR_HANDLER_INTERNAL_ERROR uint8 = 253

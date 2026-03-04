@@ -17,10 +17,10 @@ type Publisher[K any] struct {
 
 func NewPublisher[K any](name string) (*Publisher[K], error) {
 
-	addr, err := net.ResolveUDPAddr("udp", ":0")
-	if err != nil {
-		return nil, err
-	}
+	// addr, err := net.ResolveUDPAddr("udp", ":0")
+	// if err != nil {
+	// 	return nil, err
+	// }
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		return nil, err
