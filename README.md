@@ -69,7 +69,7 @@ Publishers and Subscribers allow for asynchronous data flow. Connections are est
 
 # Dependencies
 - zeroconf https://github.com/grandcat/zeroconf: Service discovery
-- mad-go https://github.com/poisnoir/spine-go?tab=readme-ov-file: Serialization
+- mad-go https://github.com/poisnoir/mad-go Serialization
 - kcp-go https://github.com/xtaci/kcp-go: Network Protocol
 
 # Contribution
