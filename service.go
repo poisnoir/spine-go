@@ -176,8 +176,20 @@ func (s *Service[K, V]) handleClient(conn io.ReadWriteCloser) {
 			return
 		}
 
+		if (*bufPtr)[0] == globals.PING_CODE {
+			conn.Write([]byte{globals.PONG_CODE})
+			continue
+		}
+
+		// might change in future if we add more operation codes
+		if (*bufPtr)[0] != globals.SERVICE_REQUEST {
+			logger.Error("recieved invalid operation code", "error", err)
+			conn.Write([]byte{globals.ERROR_INVALID_OPERATION_CODE})
+			continue
+		}
+
 		var key K
-		err = s.keyEncoder.Decode((*bufPtr)[:n], &key)
+		err = s.keyEncoder.Decode((*bufPtr)[1:n], &key)
 		if err != nil {
 			logger.Error("unable to decode key", "error", err)
 			continue
