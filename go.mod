@@ -9,6 +9,7 @@ require github.com/poisnoir/mad-go v0.0.0-20260213164930-5bea82a451d0
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/klauspost/reedsolomon v1.12.0 // indirect
 	github.com/miekg/dns v1.1.66 // indirect

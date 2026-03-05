@@ -3,13 +3,22 @@ package spine
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
 	"github.com/xtaci/kcp-go/v5"
 )
 
-type kcpPool struct {
+type kcpData[K any, V any] struct {
+	input  K
+	output chan kcpOutput[V]
+}
+
+type kcpOutput[V any] struct {
+	data V
+	err  error
 }
 
 type ServiceCaller[K any, V any] struct {
@@ -19,6 +28,8 @@ type ServiceCaller[K any, V any] struct {
 	valueEncoder *mad.Mad[V]
 	conn         *kcp.UDPSession
 	ctx          context.Context
+	requests     chan kcpData[K, V]
+	isConnected  bool
 	cancel       context.CancelFunc
 }
 
@@ -43,18 +54,117 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*
 		serviceName:  serviceName,
 		ctx:          ctx,
 		cancel:       cancel,
+		isConnected:  false,
+		requests:     make(chan kcpData[K, V]),
 	}
+
+	go sc.run()
 
 	return sc, nil
 }
 
-/*
-The connection routine attempts to establish a KCP connection to the service.
-If the connection drops, this function is called to reconnect. Given that we expect a maximum of 50 clients per service,
-maintaining persistent connections should not lead to port exhaustion. However, if port exhaustion becomes an issue in the future,
-we will implement a mechanism to disconnect clients with low load.
-*/
-func (sc *ServiceCaller[K, V]) connect(ctx context.Context) error {
+func (sc *ServiceCaller[K, V]) run() {
+
+	// timer heartbeat
+	// make sure connecton is open and alive
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		if sc.isConnected {
+			select {
+			case <-ticker.C:
+				if err := sc.heartBeat(); err != nil {
+					sc.isConnected = false
+				}
+			case requestData := <-sc.requests:
+
+				// Postpone heartbeat
+				ticker.Reset(10 * time.Second)
+
+				output, err := sc.send(requestData.input)
+				if err != nil {
+					sc.isConnected = false
+				}
+				requestData.output <- kcpOutput[V]{data: output, err: err}
+			// Todo: close the service caller
+			case <-sc.ctx.Done():
+				return
+			}
+		} else {
+			bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), sc.ctx)
+			_ = backoff.Retry(sc.connect, bo)
+		}
+	}
+}
+
+func (sc *ServiceCaller[K, V]) heartBeat() error {
+	buf := []byte{globals.PING_CODE}
+	_, err := request(sc.conn, buf, 1, true)
+	if err != nil {
+		return err
+	}
+
+	if buf[0] != globals.PONG_CODE {
+		return fmt.Errorf(globals.ERROR_PING)
+	}
+
+	return nil
+}
+
+// send is the gate way to kcp connection. It acts as multiplaxer
+func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
+	var v V
+
+	requestSize := sc.keyEncoder.GetRequiredSize(&key)
+	if requestSize > globals.MAX_PACKET_SIZE {
+		return v, fmt.Errorf(globals.ERROR_PAYLOAD_SIZE)
+	}
+
+	bufPtr := sc.namespace.bufferPool.Get().(*[]byte)
+	defer sc.namespace.bufferPool.Put(bufPtr)
+	buf := *bufPtr
+	sc.keyEncoder.Encode(&key, buf)
+
+	_, err := request(sc.conn, buf, requestSize, true)
+
+	if err != nil {
+		return v, err
+	}
+
+	_ = sc.valueEncoder.Decode(buf, &v)
+	return v, nil
+}
+
+// sends data: key to the service and returns V from service
+// context is used for establishing connection
+func (sc *ServiceCaller[K, V]) Call(key K, ctx context.Context) (V, error) {
+
+	var zero V
+	data := kcpData[K, V]{
+		input:  key,
+		output: make(chan kcpOutput[V], 1),
+	}
+
+	select {
+	case sc.requests <- data:
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
+
+	select {
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	case output := <-data.output:
+		return output.data, output.err
+	}
+}
+
+func (sc *ServiceCaller[K, V]) Close() {
+	sc.cancel()
+}
+
+func (sc *ServiceCaller[K, V]) connect() error {
 
 	logger := sc.namespace.logger.With(
 		sc.namespace.Name(),
@@ -64,7 +174,7 @@ func (sc *ServiceCaller[K, V]) connect(ctx context.Context) error {
 	)
 
 	// finding the service
-	address, err := sc.namespace.GetService(sc.serviceName, ctx)
+	address, err := sc.namespace.GetService(sc.serviceName, sc.ctx)
 	if err != nil {
 		logger.Error("unable to find the service", "error", err)
 		return err // the only way to fail here is to run out of context
@@ -86,7 +196,7 @@ func (sc *ServiceCaller[K, V]) connect(ctx context.Context) error {
 	keyCode := sc.keyEncoder.Code()
 	n := copy(buf, keyCode)
 
-	n, err = request(sess, buf[:n], true)
+	n, err = request(sess, buf, n, true)
 	if err != nil {
 		logger.Error("failed to validate service input type", "error", err)
 		return err
@@ -94,7 +204,7 @@ func (sc *ServiceCaller[K, V]) connect(ctx context.Context) error {
 		err = fmt.Errorf("response is corrupted")
 		logger.Error("failed to validate service input type", "error", err)
 		return err
-	} else if buf[0] != globals.OK_STATUS {
+	} else if buf[0] != globals.OK_STATUS_CODE {
 		err = fmt.Errorf("service data type is different")
 		logger.Error("failed to validate service input type", "error", err)
 		return err
@@ -103,53 +213,21 @@ func (sc *ServiceCaller[K, V]) connect(ctx context.Context) error {
 	valueCode := sc.valueEncoder.Code()
 	n = copy(buf, valueCode)
 
-	n, err = request(sess, buf[:n], true)
+	n, err = request(sess, buf, n, true)
 	if err != nil {
 		logger.Error("failed to validate service output type", "error", err)
 	} else if n != 1 {
 		err = fmt.Errorf("response is corrupted")
 		logger.Error("failed to validate service output type", "error", err)
 		return err
-	} else if buf[0] != globals.OK_STATUS {
+	} else if buf[0] != globals.OK_STATUS_CODE {
 		err = fmt.Errorf("service data type is different")
 		logger.Error("failed to validate service output type", "error", err)
 		return err
 	}
 	sc.conn = sess
+	sc.isConnected = true
 
 	return nil
 
-}
-
-// sends data: key to the service and returns V from service
-// context is used for establishing connection
-func (sc *ServiceCaller[K, V]) Call(key K, ctx context.Context) (V, error) {
-	var v V
-
-	var err error = nil
-	if err != nil {
-		return v, err
-	}
-
-	requestSize := sc.keyEncoder.GetRequiredSize(&key)
-	if requestSize > globals.MAX_PACKET_SIZE {
-		return v, fmt.Errorf("failed to encode key. key is too big. max key size is 4kb")
-	}
-
-	bufPtr := sc.namespace.bufferPool.Get().(*[]byte)
-	defer sc.namespace.bufferPool.Put(bufPtr)
-	buf := *bufPtr
-	sc.keyEncoder.Encode(&key, buf)
-
-	_, err = request(sc.conn, buf[:requestSize], true)
-	if err != nil {
-		return v, err
-	}
-
-	_ = sc.valueEncoder.Decode(buf, &v)
-	return v, nil
-}
-
-func (sc *ServiceCaller[K, V]) Close() {
-	sc.cancel()
 }

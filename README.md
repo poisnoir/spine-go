@@ -48,9 +48,9 @@ Call services from any machine on the network using the same generic types.
     // Blocks until result is received or context is canceled
     c, err := NewServiceCaller[string, int](ns, "string_length", ctx)
 	
-		// will error if it can't get result before context cancels
-		// Blocks until result is received or context is canceled
-		result, err := c.Call("hello world", ctx)
+	// will error if it can't get result before context cancels
+	// Blocks until result is received or context is canceled
+	result, err := c.Call("hello world", ctx)
 ```
 
 ---
