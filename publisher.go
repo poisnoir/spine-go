@@ -1,5 +1,6 @@
 package spine
 
+/*
 import (
 	"context"
 	"net"
@@ -83,3 +84,4 @@ func newClient[K any](conn net.Conn) *client[K] {
 func (c *client[K]) start() {
 
 }
+*/

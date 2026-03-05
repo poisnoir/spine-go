@@ -2,8 +2,10 @@ package spine
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
+	"slices"
 
 	"github.com/grandcat/zeroconf"
 	"github.com/poisnoir/mad-go"
@@ -21,12 +23,7 @@ type Service[K any, V any] struct {
 	handler      func(K) (V, error)
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
-	requests     chan handlerRequest[K, V]
-}
-
-type handlerRequest[K any, V any] struct {
-	key    K
-	Result chan V
+	requests     chan serviceRequest[K, V]
 }
 
 func NewService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*Service[K, V], error) {
@@ -82,7 +79,7 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		keyEncoder:   keyEnc,
 		valueEncoder: valueEnc,
 		cancel:       cancel,
-		requests:     make(chan handlerRequest[K, V], 100),
+		requests:     make(chan serviceRequest[K, V], 100),
 	}
 
 	go s.runListener()
@@ -108,10 +105,60 @@ func (s *Service[K, V]) runListener() {
 
 		go s.handleClient(conn)
 	}
+}
 
+// Validates the types of service caller
+func (s *Service[K, V]) establishConnection(conn io.ReadWriteCloser) error {
+	logger := s.namespace.logger.With(
+		s.namespace.Name(),
+		"service",
+		s.name,
+		"establish connection",
+	)
+
+	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
+	defer s.namespace.bufferPool.Put(bufPtr)
+	n, err := conn.Read(*bufPtr)
+	if err != nil {
+		return err
+	}
+
+	keyCode := []byte(s.keyEncoder.Code())
+
+	if !slices.Equal(keyCode, (*bufPtr)[:n]) {
+		logger.Error("falied to establish connection")
+		return fmt.Errorf("invalid key code")
+	}
+
+	_, err = conn.Write([]byte{globals.OK_STATUS_CODE})
+	if err != nil {
+		logger.Error("falied to establish connection")
+		return err
+	}
+
+	n, err = conn.Read(*bufPtr)
+	if err != nil {
+		return err
+	}
+	valueCode := []byte(s.valueEncoder.Code())
+
+	if !slices.Equal(valueCode, (*bufPtr)[:n]) {
+		logger.Error("falied to establish connection")
+		return fmt.Errorf("invalid value code")
+	}
+	_, err = conn.Write([]byte{globals.OK_STATUS_CODE})
+
+	return err
 }
 
 func (s *Service[K, V]) handleClient(conn io.ReadWriteCloser) {
+
+	defer conn.Close()
+	err := s.establishConnection(conn)
+	if err != nil {
+		return
+	}
+
 	logger := s.namespace.logger.With(
 		s.namespace.Name(),
 		"service",
@@ -121,34 +168,46 @@ func (s *Service[K, V]) handleClient(conn io.ReadWriteCloser) {
 
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
-	n, err := conn.Read(*bufPtr)
-	if err != nil {
-		logger.Error("unable to read from connection", "error", err)
-		conn.Close()
-		return
-	}
-	var key K
-	err = s.keyEncoder.Decode((*bufPtr)[:n], &key)
-	if err != nil {
-		logger.Error("unable to decode key", "error", err)
-		conn.Close()
-		return
+
+	for {
+		n, err := conn.Read(*bufPtr)
+		if err != nil {
+			logger.Error("unable to read from connection", "error", err)
+			return
+		}
+
+		var key K
+		err = s.keyEncoder.Decode((*bufPtr)[:n], &key)
+		if err != nil {
+			logger.Error("unable to decode key", "error", err)
+			continue
+		}
+
+		hr := serviceRequest[K, V]{
+			input:  key,
+			output: make(chan serviceOutput[V], 1),
+		}
+
+		// todo: need some timeout shit
+		s.requests <- hr
+		res := <-hr.output
+		if res.err != nil {
+			_, err = conn.Write([]byte{globals.ERROR_SERVICE_ERROR_CODE})
+			if err != nil {
+				logger.Error("failed to write from connection", "error", err)
+				return
+			}
+		}
+
+		s.valueEncoder.Encode(&res.data, *bufPtr)
+		_, err = conn.Write((*bufPtr)[:s.valueEncoder.GetRequiredSize(&res.data)])
+		if err != nil {
+			logger.Error("failed to write from connection", "error", err)
+			return
+		}
+
 	}
 
-	result := make(chan V, 1)
-	hr := handlerRequest[K, V]{
-		key:    key,
-		Result: result,
-	}
-
-	s.requests <- hr
-	res := <-result
-	// reseting buffer
-	(*bufPtr) = (*bufPtr)[:0]
-	s.valueEncoder.Encode(&res, *bufPtr)
-	conn.Write((*bufPtr)[:s.valueEncoder.GetRequiredSize(&res)])
-
-	defer conn.Close()
 }
 
 func (s *Service[K, V]) runHandler() {
@@ -163,12 +222,12 @@ func (s *Service[K, V]) runHandler() {
 	for {
 		select {
 		case request := <-s.requests:
-			response, err := s.handler(request.key)
+			response, err := s.handler(request.input)
 			if err != nil {
 				logger.Error("unable to handle request", "error", err)
 				// Todo: Change To return error instead of default
 			}
-			request.Result <- response
+			request.output <- serviceOutput[V]{data: response, err: err}
 			s.namespace.logger.Info("handled request", "request", request, "response", response)
 		case <-s.context.Done():
 			return

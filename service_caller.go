@@ -11,16 +11,6 @@ import (
 	"github.com/xtaci/kcp-go/v5"
 )
 
-type kcpData[K any, V any] struct {
-	input  K
-	output chan kcpOutput[V]
-}
-
-type kcpOutput[V any] struct {
-	data V
-	err  error
-}
-
 type ServiceCaller[K any, V any] struct {
 	namespace    *Namespace
 	serviceName  string
@@ -28,7 +18,7 @@ type ServiceCaller[K any, V any] struct {
 	valueEncoder *mad.Mad[V]
 	conn         *kcp.UDPSession
 	ctx          context.Context
-	requests     chan kcpData[K, V]
+	requests     chan serviceRequest[K, V]
 	isConnected  bool
 	cancel       context.CancelFunc
 }
@@ -55,7 +45,7 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*
 		ctx:          ctx,
 		cancel:       cancel,
 		isConnected:  false,
-		requests:     make(chan kcpData[K, V]),
+		requests:     make(chan serviceRequest[K, V], 100),
 	}
 
 	go sc.run()
@@ -86,7 +76,7 @@ func (sc *ServiceCaller[K, V]) run() {
 				if err != nil {
 					sc.isConnected = false
 				}
-				requestData.output <- kcpOutput[V]{data: output, err: err}
+				requestData.output <- serviceOutput[V]{data: output, err: err}
 			// Todo: close the service caller
 			case <-sc.ctx.Done():
 				return
@@ -141,16 +131,11 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 func (sc *ServiceCaller[K, V]) Call(key K, ctx context.Context) (V, error) {
 
 	var zero V
-	data := kcpData[K, V]{
+	data := serviceRequest[K, V]{
 		input:  key,
-		output: make(chan kcpOutput[V], 1),
+		output: make(chan serviceOutput[V], 1),
 	}
-
-	select {
-	case sc.requests <- data:
-	case <-ctx.Done():
-		return zero, ctx.Err()
-	}
+	sc.requests <- data
 
 	select {
 	case <-ctx.Done():

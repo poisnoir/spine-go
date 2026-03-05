@@ -23,7 +23,6 @@ All communication happens within a secured namespace.
 ```go
     logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
     // Join a namespace with a secret key and encryption disabled
-    // If encryption is false, hmac is used for authentication
     ns, err := spine.JointNamespace("mecca500", "secret_meow", logger, false)
 ```
 
