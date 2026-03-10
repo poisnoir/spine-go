@@ -90,7 +90,7 @@ func (sc *ServiceCaller[K, V]) run() {
 
 func (sc *ServiceCaller[K, V]) heartBeat() error {
 	buf := []byte{globals.PING_CODE}
-	_, err := request(sc.conn, buf, 1, true)
+	_, err := write(sc.conn, buf, 1, true)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func (sc *ServiceCaller[K, V]) heartBeat() error {
 func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	var v V
 
-	requestSize := sc.keyEncoder.GetRequiredSize(&key)
+	requestSize := sc.keyEncoder.GetRequiredSize(&key) + 1
 	if requestSize > globals.MAX_PACKET_SIZE {
 		return v, fmt.Errorf(globals.ERROR_PAYLOAD_SIZE)
 	}
@@ -114,9 +114,10 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	bufPtr := sc.namespace.bufferPool.Get().(*[]byte)
 	defer sc.namespace.bufferPool.Put(bufPtr)
 	buf := *bufPtr
-	sc.keyEncoder.Encode(&key, buf)
+	buf[0] = globals.SERVICE_REQUEST
+	sc.keyEncoder.Encode(&key, buf[1:])
 
-	_, err := request(sc.conn, buf, requestSize, true)
+	_, err := write(sc.conn, buf, requestSize, true)
 
 	if err != nil {
 		return v, err
@@ -181,7 +182,7 @@ func (sc *ServiceCaller[K, V]) connect() error {
 	keyCode := sc.keyEncoder.Code()
 	n := copy(buf, keyCode)
 
-	n, err = request(sess, buf, n, true)
+	n, err = write(sess, buf, n, true)
 	if err != nil {
 		logger.Error("failed to validate service input type", "error", err)
 		return err
@@ -198,7 +199,7 @@ func (sc *ServiceCaller[K, V]) connect() error {
 	valueCode := sc.valueEncoder.Code()
 	n = copy(buf, valueCode)
 
-	n, err = request(sess, buf, n, true)
+	n, err = write(sess, buf, n, true)
 	if err != nil {
 		logger.Error("failed to validate service output type", "error", err)
 	} else if n != 1 {

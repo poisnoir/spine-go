@@ -53,7 +53,7 @@ Call services from any machine on the network using the same generic types.
 ```
 
 ---
-## Pub/Sub (Beta)
+## Pub/Sub
 Publishers and Subscribers allow for asynchronous data flow. Connections are established automatically once a publisher is discovered on the network.
 ```go
     // Create a Publisher

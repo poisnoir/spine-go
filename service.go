@@ -74,6 +74,7 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		name:         name,
 		server:       server,
 		namespace:    namespace,
+		handler:      handler,
 		context:      ctx,
 		listener:     listener,
 		keyEncoder:   keyEnc,

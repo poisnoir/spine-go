@@ -16,7 +16,7 @@ func main() {
 	ctx, _ := context.WithCancel(context.Background())
 
 	// will error if types are mismatched
-	c, _ := spine.NewServiceCaller[string, uint32](ns, "string_length")
+	c, _ := spine.NewServiceCaller[string, string](ns, "print")
 
 	// will error if it can't get result before context cancels
 	// Blocks until result is received or context is canceled
