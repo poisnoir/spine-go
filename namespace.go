@@ -2,6 +2,7 @@ package spine
 
 import (
 	"context"
+	"crypto/sha256"
 	"log/slog"
 	"sync"
 
@@ -25,7 +26,8 @@ func JointNamespace(name string, secretKey string, logger *slog.Logger, useEncry
 	var enyption kcp.BlockCrypt = nil
 	if useEncryption {
 		var err error
-		enyption, err = kcp.NewAESBlockCrypt([]byte(secretKey))
+		key := sha256.Sum256([]byte(secretKey))
+		enyption, err = kcp.NewAESBlockCrypt(key[:])
 		if err != nil {
 			return nil, err
 		}
