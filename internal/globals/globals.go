@@ -13,6 +13,7 @@ const OK_STATUS_CODE uint8 = 0
 const PING_CODE uint8 = 1
 const PONG_CODE uint8 = 2
 const SERVICE_REQUEST uint8 = 3
+const PUBLISER_PUSH uint8 = 4
 
 const ERROR_SERVICE_ERROR_CODE uint8 = 252
 const ERROR_INVALID_OPERATION_CODE uint8 = 253

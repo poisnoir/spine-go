@@ -56,7 +56,7 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*
 func (sc *ServiceCaller[K, V]) run() {
 
 	// timer heartbeat
-	// make sure connecton is open and alive
+	// make sure connection is open and alive
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -102,7 +102,7 @@ func (sc *ServiceCaller[K, V]) heartBeat() error {
 	return nil
 }
 
-// send is the gate way to kcp connection. It acts as multiplaxer
+// send is the gateway to kcp connection. It acts as multiplexer
 func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	var v V
 
@@ -127,7 +127,7 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	return v, nil
 }
 
-// sends data: key to the service and returns V from service
+// Call sends key to the service and returns V from service
 // context is used for establishing connection
 func (sc *ServiceCaller[K, V]) Call(key K, ctx context.Context) (V, error) {
 

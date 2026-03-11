@@ -41,12 +41,12 @@ Turn any Go function into a network-discoverable service.
 ### 3. Call a Service
 Call services from any machine on the network using the same generic types.
 ```go
-    ctx, _ := context.WithTimeout(context.Background(), time.Second)
 
     // will error if types are mismatched
     // Blocks until result is received or context is canceled
-    c, err := NewServiceCaller[string, int](ns, "string_length", ctx)
-	
+    c, err := NewServiceCaller[string, int](ns, "string_length")
+
+	ctx, _ := context.WithTimeout(context.Background(), time.Second)
 	// will error if it can't get result before context cancels
 	// Blocks until result is received or context is canceled
 	result, err := c.Call("hello world", ctx)
@@ -70,6 +70,7 @@ Publishers and Subscribers allow for asynchronous data flow. Connections are est
 - zeroconf https://github.com/grandcat/zeroconf: Service discovery
 - mad-go https://github.com/poisnoir/mad-go Serialization
 - kcp-go https://github.com/xtaci/kcp-go: Network Protocol
+- backoff
 
 # Contribution
 Feel free to contribute or suggest features. Contact: @rima1881
