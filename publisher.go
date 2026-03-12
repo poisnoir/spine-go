@@ -1,29 +1,40 @@
 package spine
 
-/*
 import (
-	"context"
 	"net"
 
+	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
+	"github.com/xtaci/kcp-go/v5"
 
 	"github.com/grandcat/zeroconf"
 )
 
 type Publisher[K any] struct {
-	name     string
-	listener *net.UDPConn // used for incoming messages
-	server   *zeroconf.Server
+	namespace *Namespace
+	name      string
+	listener  *kcp.Listener
+	server    *zeroconf.Server
+	encoder   *mad.Mad[K]
 }
 
-func NewPublisher[K any](name string) (*Publisher[K], error) {
+func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 
-	// addr, err := net.ResolveUDPAddr("udp", ":0")
-	// if err != nil {
-	// 	return nil, err
-	// }
-	conn, err := net.ListenUDP("udp", addr)
+	logger := ns.logger.With(
+		ns.Name(),
+		"publiser",
+		name,
+		"new publisher",
+	)
+
+	encoder, err := mad.NewMad[K]()
 	if err != nil {
+		return nil, err
+	}
+
+	listener, err := kcp.ListenWithOptions(":0", ns.encryption, 10, 3)
+	if err != nil {
+		logger.Error("unable to create listener", "error", err)
 		return nil, err
 	}
 
@@ -31,23 +42,29 @@ func NewPublisher[K any](name string) (*Publisher[K], error) {
 		name+globals.ZERO_CONF_PUBLISHER_PREFIX,
 		globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
-		addr.Port,
+		listener.Addr().(*net.UDPAddr).Port,
 		[]string{"id=botzilla_publish_" + name},
 		nil,
 	)
 
 	p := &Publisher[K]{
-		name:     name,
-		listener: conn,
-		server:   server,
+		namespace: ns,
+		name:      name,
+		listener:  listener,
+		encoder:   encoder,
+		server:    server,
 	}
 
-	go p.startListener()
+	go p.run()
 
 	return p, nil
 }
 
-func (p *Publisher[K]) startListener() {
+func (p *Publisher[K]) run() {
+
+	for {
+
+	}
 
 }
 
@@ -63,25 +80,3 @@ func (p *Publisher[K]) Publish(data K) error {
 func (p *Publisher[K]) Subscribers() []string {
 	return nil
 }
-
-type client[K any] struct {
-	Path       chan K
-	connection net.Conn
-	ctx        context.Context
-	cancel     context.CancelFunc
-}
-
-func newClient[K any](conn net.Conn) *client[K] {
-	c := &client[K]{
-		Path:       make(chan K),
-		ctx:        context.Background(),
-		connection: conn,
-	}
-
-	return c
-}
-
-func (c *client[K]) start() {
-
-}
-*/

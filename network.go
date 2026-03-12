@@ -1,6 +1,9 @@
 package spine
 
 import (
+	"io"
+	"log/slog"
+
 	"github.com/xtaci/kcp-go/v5"
 )
 
@@ -15,4 +18,15 @@ func write(sess *kcp.UDPSession, buf []byte, requestSize int, hasResponse bool) 
 
 	n, err := sess.Read(buf)
 	return n, err
+}
+
+func runListener(listener *kcp.Listener, logger *slog.Logger, handler func(io.ReadWriteCloser)) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			logger.Error("unable to accept connection", "error", err)
+			continue
+		}
+		go handler(conn)
+	}
 }

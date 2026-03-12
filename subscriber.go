@@ -58,8 +58,7 @@ func (s *Subscriber[K]) run() {
 	if s.isConnected {
 		select {
 		case <-ticker.C:
-			// maybe move it to publisher
-			s.isConnected = false
+
 		case <-s.ctx.Done():
 			return
 		}
@@ -71,7 +70,7 @@ func (s *Subscriber[K]) run() {
 
 func (s *Subscriber[K]) runHandler() {
 
-	_ = s.namespace.logger.With(
+	logger := s.namespace.logger.With(
 		s.namespace.Name(),
 		"subscriber",
 		s.subscribedTo,
@@ -83,17 +82,14 @@ func (s *Subscriber[K]) runHandler() {
 	buf := *bufPtr
 
 	for {
-		n, err := s.conn.Read(buf)
+		_, err := s.conn.Read(buf)
 		// Todo
 		if err != nil {
-
-		}
-
-		if buf[0] == globals.PING_CODE && n == 1 {
-			continue
+			logger.Error("failed to read data")
 		}
 
 		if buf[0] != globals.PUBLISER_PUSH {
+			logger.Error("Invalid operation code")
 			continue
 		}
 
