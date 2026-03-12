@@ -45,11 +45,8 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 		requests:     make(chan serviceRequest[K, V], 100),
 	}
 
-	logger := namespace.logger.With(
-		namespace.Name(),
-		"threaded service",
-		name,
-	)
+	// todo fix me pls
+	logger := namespace.logger
 
 	go runListener(listener, logger, ts.clientHandler) // stops when listener closes
 	return ts, nil

@@ -25,11 +25,8 @@ type Service[K any, V any] struct {
 
 func NewService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*Service[K, V], error) {
 
-	logger := namespace.logger.With(
-		namespace.Name(),
-		"service",
-		name,
-	)
+	// fix me pls
+	logger := namespace.logger
 
 	keyEnc, valueEnc, listener, server, err := generateService[K, V](namespace, name)
 	if err != nil {
@@ -68,7 +65,7 @@ func (s *Service[K, V]) clientHandler(conn io.ReadWriteCloser) {
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
 
-	handleClient[K, V](conn, s.keyEncoder, s.valueEncoder, *bufPtr, s.processRequest, logger)
+	handleClient(conn, s.keyEncoder, s.valueEncoder, *bufPtr, s.processRequest, logger)
 
 }
 

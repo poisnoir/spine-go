@@ -7,7 +7,7 @@ It provides ROS-like communication patterns—Services (RPC) and Pub/Sub—built
 # Architecture
 spine treats every component as a standalone Entity. 
 Whether you are running a single monolithic binary or a distributed swarm of microservices, discovery and connectivity are handled transparently at the library level.
-- `Service/ServiceCaller`: Synchronous Request/Response.
+- `Service/ThreadedService/ServiceCaller`: Synchronous Request/Response.
 - `Publishers/Subscribers`: Asynchronous broadcast.
 - `Streamer`: Asynchronous streaming.
 - Namespaces: Virtual silos that group related services and prevent cross-talk.
