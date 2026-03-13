@@ -16,6 +16,7 @@ type ServiceCaller[K any, V any] struct {
 	serviceName  string
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
+	errorEncoder *mad.Mad[string]
 	conn         *kcp.UDPSession
 	ctx          context.Context
 	requests     chan serviceRequest[K, V]
@@ -35,6 +36,8 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*
 		return nil, err
 	}
 
+	errEnc, _ := mad.NewMad[string]()
+
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	sc := &ServiceCaller[K, V]{
@@ -44,6 +47,7 @@ func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*
 		serviceName:  serviceName,
 		ctx:          ctx,
 		cancel:       cancel,
+		errorEncoder: errEnc,
 		isConnected:  false,
 		requests:     make(chan serviceRequest[K, V], 100),
 	}

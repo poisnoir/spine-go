@@ -20,6 +20,7 @@ type ThreadedService[K any, V any] struct {
 	handler      func(K) (V, error)
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
+	errorEncoder *mad.Mad[string]
 	requests     chan serviceRequest[K, V]
 }
 
@@ -30,6 +31,7 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 		return nil, fmt.Errorf("failed to create service: %v", err)
 	}
 
+	errEnc, _ := mad.NewMad[string]()
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	ts := &ThreadedService[K, V]{
@@ -41,6 +43,7 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 		listener:     listener,
 		keyEncoder:   keyEnc,
 		valueEncoder: valueEnc,
+		errorEncoder: errEnc,
 		cancel:       cancel,
 		requests:     make(chan serviceRequest[K, V], 100),
 	}

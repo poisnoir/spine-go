@@ -1,9 +1,9 @@
-# 🦴 spine-go
+# spine-go
 ### High-Performance, Local-First Service Library for Go
 
 **Spine-Go** is a lightweight, "zero-config" middleware designed for high-performance communication on local networks (LAN) and edge clusters. It provides ROS-like communication patterns—**Services (RPC)** and **Pub/Sub**—built natively in Go with zero external brokers, minimal overhead, and absolute developer freedom.
 
-> Spine-Go is currently in an **Alpha/Experimental** state. The core "backbone" is functional, but the protocol is still evolving. Expect breaking changes, and do not use this for mission-critical production systems yet. We are still building the ribs and the limbs.
+> Spine-Go is currently in an **Alpha/Experimental** state. The core "backbone" is functional, but the protocol is still evolving. Expect breaking changes, and do not use this for mission-critical production systems yet.
 
 ---
 

@@ -20,6 +20,7 @@ type Service[K any, V any] struct {
 	handler      func(K) (V, error)
 	keyEncoder   *mad.Mad[K]
 	valueEncoder *mad.Mad[V]
+	errorEncoder *mad.Mad[string]
 	requests     chan serviceRequest[K, V]
 }
 
@@ -33,6 +34,7 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		return nil, fmt.Errorf("failed to create service: %v", err)
 	}
 
+	errEnc, _ := mad.NewMad[string]()
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	s := &Service[K, V]{
@@ -44,6 +46,7 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		listener:     listener,
 		keyEncoder:   keyEnc,
 		valueEncoder: valueEnc,
+		errorEncoder: errEnc,
 		cancel:       cancel,
 		requests:     make(chan serviceRequest[K, V], 100),
 	}

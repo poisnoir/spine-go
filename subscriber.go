@@ -18,6 +18,7 @@ type Subscriber[K any] struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	decoder      *mad.Mad[K]
+	errorEncoder *mad.Mad[string]
 	isConnected  bool
 }
 
