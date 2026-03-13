@@ -126,6 +126,7 @@ func handleClient[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.Mad[K],
 
 		res := processRequest(key)
 		if res.err != nil {
+			logger.Error("handler failed", "error", err)
 			_, err = conn.Write([]byte{globals.ERROR_SERVICE_ERROR_CODE})
 			if err != nil {
 				logger.Error("failed to write from connection", "error", err)

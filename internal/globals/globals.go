@@ -26,6 +26,7 @@ const ZERO_CONF_SERVICE_PREFIX = "service_"
 const ZERO_CONF_TYPE = "_botzilla._tcp"
 const ZERO_CONF_DOMAIN = "local."
 
+const ERROR_SERVICE_HANDLER = "service handler has an error"
 const ERROR_CORRUPT_PAYLOAD = "CORRUPT_PAYLOAD"
 const ERROR_PING = "service didn't respond to ping"
 const ERROR_PAYLOAD_SIZE = "failed to encode key. key is too big. max key size is 4kb"

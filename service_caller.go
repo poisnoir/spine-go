@@ -118,9 +118,14 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	sc.keyEncoder.Encode(&key, buf[1:])
 
 	_, err := write(sc.conn, buf, requestSize, true)
-
 	if err != nil {
 		return v, err
+	}
+
+	// Todo make differnet errors.
+	// for now assume errr is handler error
+	if buf[0] != globals.OK_STATUS_CODE {
+		return v, fmt.Errorf(globals.ERROR_SERVICE_HANDLER)
 	}
 
 	_ = sc.valueEncoder.Decode(buf, &v)

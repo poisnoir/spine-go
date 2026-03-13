@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Todo
-/*
 func TestService(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	ns, err := JointNamespace("test_service", "secret", logger, false)
@@ -53,7 +51,7 @@ func TestService(t *testing.T) {
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
-	} */
+}
 
 func TestThreadedService(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))

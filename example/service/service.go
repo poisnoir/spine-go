@@ -15,6 +15,7 @@ func main() {
 	lenFunc := func(input string) (uint32, error) {
 		return uint32(len(input)), nil
 	}
+
 	printFunc := func(input string) (string, error) {
 		fmt.Println(input)
 		return "printed " + input, nil

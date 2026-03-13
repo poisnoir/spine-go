@@ -21,7 +21,6 @@ If you can write a Go function, you can build a Spine service.
 * **KCP over UDP:** Superior performance on "lossy" or unstable networks (like busy Wi-Fi) compared to TCP.
 * **Zeroconf (mDNS) Discovery:** Plug-and-play service registration. No IP management required.
 * **Encrypted by Default:** Namespace-based isolation with built-in AES-GCM encryption.
-* **Threaded Services:** Easily scale your handlers to handle concurrent client requests.
 
 ---
 
@@ -78,7 +77,7 @@ pub, _ := spine.NewPublisher[SensorData](ns, "lidar_scan")
 pub.Publish(currentData)
 
 // Create a Subscriber
-sub, _ := spine.NewSubscriber[SensorData](ns, "lidar_scan", func(data SensorData) {
+sub, _ := spine.NewSubscriber(ns, "lidar_scan", func(data SensorData) {
     fmt.Printf("Received data: %v\n", data)
 })
 ```
