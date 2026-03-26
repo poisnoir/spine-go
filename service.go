@@ -68,7 +68,7 @@ func (s *Service[K, V]) clientHandler(conn io.ReadWriteCloser) {
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
 
-	handleClient(conn, s.keyEncoder, s.valueEncoder, *bufPtr, s.processRequest, logger)
+	handleCallerRequest(conn, s.keyEncoder, s.valueEncoder, *bufPtr, s.processRequest, logger)
 
 }
 

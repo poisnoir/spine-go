@@ -1,8 +1,12 @@
 package spine
 
 import (
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
+	"slices"
+	"sync"
 
 	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
@@ -17,9 +21,9 @@ type Publisher[K any] struct {
 	listener     *kcp.Listener
 	server       *zeroconf.Server
 	encoder      *mad.Mad[K]
-	intEncoder   *mad.Mad[uint32]
 	errorEncoder *mad.Mad[string]
-	clients      [](client[K])
+	logger       *slog.Logger
+	clients      []*client[K]
 }
 
 func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
@@ -59,7 +63,7 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 		server:    server,
 	}
 
-	go p.run()
+	go runListener(listener, logger, p.registerSubscriber)
 
 	return p, nil
 }
@@ -68,8 +72,41 @@ func (p *Publisher[K]) run() {
 
 }
 
-func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser, data K) {
+func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 
+	var err error
+	defer func() {
+		if err != nil {
+			conn.Close()
+		}
+	}()
+
+	bufPtr := p.namespace.bufferPool.Get().(*[]byte)
+	defer p.namespace.bufferPool.Put(bufPtr)
+	buf := *bufPtr
+
+	_, err = conn.Read(make([]byte, 1))
+	if err != nil {
+		return
+	}
+
+	n, err := conn.Read(buf)
+	if err != nil {
+		return
+	}
+
+	if !slices.Equal([]byte(p.encoder.Code()), buf[:n]) {
+		err = fmt.Errorf("invalid data code")
+		return
+	}
+
+	_, err = conn.Write([]byte{globals.OK_STATUS_CODE})
+	if err != nil {
+		return
+	}
+
+	c := newClient[K](conn)
+	p.clients = append(p.clients, c)
 }
 
 func (p *Publisher[K]) Publish(data K) error {
@@ -77,16 +114,13 @@ func (p *Publisher[K]) Publish(data K) error {
 	packetSize := uint32(p.encoder.GetRequiredSize(&data))
 	buf := make([]byte, int(packetSize)+5)
 
-	// publisher is gonna send packets as fast as possible so there is need to distinguish between packets if they combine
-	p.intEncoder.Encode(&packetSize, buf)
-	buf[4] = globals.PUBLISER_PUSH
-	p.encoder.Encode(&data, buf[5:])
 
 	return nil
 }
 
 func (p *Publisher[K]) sendToSubscribers(conn io.ReadWriteCloser) {
-
+	bufPtr := p.namespace.bufferPool.Get().(*[]byte)
+	defer p.namespace.bufferPool.Put(bufPtr)
 }
 
 func (p *Publisher[K]) Subscribers() []string {
@@ -94,26 +128,20 @@ func (p *Publisher[K]) Subscribers() []string {
 }
 
 type client[K any] struct {
-	conn         io.ReadWriteCloser
-	dataQueue    chan K
-	reconnectSig chan struct{}
+	conn     io.ReadWriteCloser
+	data     K
+	dataLock sync.RWMutex
+	sendSig  chan struct{}
 }
 
 func newClient[K any](conn io.ReadWriteCloser) *client[K] {
-	return &client[K]{
-		conn:         conn,
-		dataQueue:    make(chan K, 100),
-		reconnectSig: make(chan struct{}),
+	c := &client[K]{
+		conn:    conn,
+		sendSig: make(chan struct{}),
 	}
-}
 
-func (c *client[K]) run() {
-	buf := make([]byte, 1)
-	for {
-		c.conn.Read(buf)
-		if buf[0] != globals.PING_CODE {
-			continue
-		}
-		c.conn.Write([]byte{globals.PONG_CODE})
-	}
+	ping(conn io.ReadWriteCloser)
+
+	return c
 }
+func (c *client[K]) Close() {}

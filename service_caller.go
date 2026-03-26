@@ -68,14 +68,12 @@ func (sc *ServiceCaller[K, V]) run() {
 		if sc.isConnected {
 			select {
 			case <-ticker.C:
-				if err := sc.heartBeat(); err != nil {
+				if err := ping(sc.conn); err != nil {
 					sc.isConnected = false
 				}
 			case requestData := <-sc.requests:
-
 				// Postpone heartbeat
 				ticker.Reset(10 * time.Second)
-
 				output, err := sc.send(requestData.input)
 				if err != nil {
 					sc.isConnected = false
@@ -90,20 +88,6 @@ func (sc *ServiceCaller[K, V]) run() {
 			_ = backoff.Retry(sc.connect, bo)
 		}
 	}
-}
-
-func (sc *ServiceCaller[K, V]) heartBeat() error {
-	buf := []byte{globals.PING_CODE}
-	_, err := write(sc.conn, buf, 1, true)
-	if err != nil {
-		return err
-	}
-
-	if buf[0] != globals.PONG_CODE {
-		return fmt.Errorf(globals.ERROR_PING)
-	}
-
-	return nil
 }
 
 // send is the gateway to kcp connection. It acts as multiplexer

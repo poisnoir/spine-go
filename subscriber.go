@@ -40,33 +40,29 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 		isConnected:  false,
 	}
 
-	go sub.run()
-	go sub.runHandler()
-
 	return sub, nil
 }
 
 func (s *Subscriber[K]) run() {
 	defer s.cancel()
 
-	// publisher should send ping packet every 10 seconds
-	// or send data. If it doesn't happen we assume connection
-	// is dead and try to reconnect
-	// note: 5 extra seconds is give for error in network
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
-	if s.isConnected {
-		select {
-		case <-ticker.C:
-
-		case <-s.ctx.Done():
-			return
+	for {
+		if s.isConnected {
+			select {
+			case <-ticker.C:
+				if err := ping(s.conn); err != nil {
+					s.isConnected = false
+				}
+			case <-s.ctx.Done():
+				return
+			}
+		} else {
+			s.connect()
 		}
-	} else {
-		s.connect()
 	}
-
 }
 
 func (s *Subscriber[K]) runHandler() {
@@ -93,7 +89,6 @@ func (s *Subscriber[K]) runHandler() {
 			logger.Error("Invalid operation code")
 			continue
 		}
-
 	}
 }
 

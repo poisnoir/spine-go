@@ -66,13 +66,13 @@ func establishConnection(conn io.ReadWriteCloser, keyCode []byte, valueCode []by
 	}
 
 	if !slices.Equal(keyCode, buf[:n]) {
-		logger.Error("falied to establish connection")
+		logger.Error("failed to establish connection")
 		return fmt.Errorf("invalid key code")
 	}
 
 	_, err = conn.Write([]byte{globals.OK_STATUS_CODE})
 	if err != nil {
-		logger.Error("falied to establish connection")
+		logger.Error("failed to establish connection")
 		return err
 	}
 
@@ -82,7 +82,7 @@ func establishConnection(conn io.ReadWriteCloser, keyCode []byte, valueCode []by
 	}
 
 	if !slices.Equal(valueCode, buf[:n]) {
-		logger.Error("falied to establish connection")
+		logger.Error("failed to establish connection")
 		return fmt.Errorf("invalid value code")
 	}
 	_, err = conn.Write([]byte{globals.OK_STATUS_CODE})
@@ -90,7 +90,7 @@ func establishConnection(conn io.ReadWriteCloser, keyCode []byte, valueCode []by
 	return err
 }
 
-func handleClient[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.Mad[K], valueEncoder *mad.Mad[V], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
+func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.Mad[K], valueEncoder *mad.Mad[V], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
 
 	defer conn.Close()
 	err := establishConnection(conn, []byte(keyEncoder.Code()), []byte(valueEncoder.Code()), buf, logger)
@@ -112,7 +112,7 @@ func handleClient[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.Mad[K],
 
 		// might change in future if we add more operation codes
 		if buf[0] != globals.SERVICE_REQUEST {
-			logger.Error("recieved invalid operation code", "error", err)
+			logger.Error("received invalid operation code", "error", err)
 			conn.Write([]byte{globals.ERROR_INVALID_OPERATION_CODE})
 			continue
 		}
