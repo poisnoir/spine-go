@@ -70,7 +70,7 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 		server:     server,
 		logger:     logger,
 		sendSig:    make(chan struct{}, 1),
-		deadClient: make(chan io.ReadWriteCloser, 64),
+		deadClient: make(chan io.ReadWriteCloser, 100),
 		clients:    make([]io.ReadWriteCloser, 0),
 	}
 

@@ -17,12 +17,12 @@ func main() {
 		fmt.Println(temp) // no fucking clue why 256 :(
 	}
 
-	//handle2 := func(temp uint32) {
-	//	fmt.Printf("sub 2 : %d\n", temp)
-	//}
+	handle2 := func(temp uint32) {
+		fmt.Printf("sub 2 : %d\n", temp)
+	}
 
 	_, _ = spine.NewSubscriber(ns, "temperature", handle1)
-	//_, _ = spine.NewSubscriber(ns, "temperature", handle2)
+	_, _ = spine.NewSubscriber(ns, "temperature", handle2)
 
 	select {}
 }

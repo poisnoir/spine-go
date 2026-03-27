@@ -61,7 +61,7 @@ func (s *Subscriber[K]) run() {
 				continue
 			}
 
-			if buf[0] != globals.PING_CODE {
+			if buf[0] == globals.PING_CODE {
 				_, err = s.conn.Write([]byte{globals.PONG_CODE})
 				if err != nil {
 					s.isConnected = false
@@ -76,33 +76,6 @@ func (s *Subscriber[K]) run() {
 		} else {
 			bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), s.ctx)
 			_ = backoff.Retry(s.connect, bo)
-		}
-	}
-}
-
-func (s *Subscriber[K]) runHandler() {
-
-	logger := s.namespace.logger.With(
-		s.namespace.Name(),
-		"subscriber",
-		s.subscribedTo,
-		"run handler",
-	)
-
-	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
-	defer s.namespace.bufferPool.Put(bufPtr)
-	buf := *bufPtr
-
-	for {
-		_, err := s.conn.Read(buf)
-		// Todo
-		if err != nil {
-			logger.Error("failed to read data")
-		}
-
-		if buf[0] != globals.PUBLISER_PUSH {
-			logger.Error("Invalid operation code")
-			continue
 		}
 	}
 }
