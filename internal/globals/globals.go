@@ -5,7 +5,6 @@ const HEADER_LENGTH int = 5
 const STATUS_CODE_INDEX int = 0
 const MESSAGE_LENGTH_INDEX int = 1
 
-// Hash
 const MAX_PACKET_SIZE int = 4096
 
 // Status Codes

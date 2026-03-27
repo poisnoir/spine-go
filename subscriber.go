@@ -44,21 +44,40 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 }
 
 func (s *Subscriber[K]) run() {
-	defer s.cancel()
+
+	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
+	buf := *bufPtr
 
 	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+
+	defer func() {
+		ticker.Stop()
+		s.namespace.bufferPool.Put(buf)
+		s.cancel()
+	}()
+
+	var data K
 
 	for {
 		if s.isConnected {
-			select {
-			case <-ticker.C:
-				if err := ping(s.conn); err != nil {
-					s.isConnected = false
-				}
-			case <-s.ctx.Done():
-				return
+			_, err := s.conn.Read(buf)
+			if err != nil {
+				s.isConnected = false
+				continue
 			}
+
+			if buf[0] != globals.PING_CODE {
+				_, err = s.conn.Write([]byte{globals.PONG_CODE})
+				if err != nil {
+					s.isConnected = false
+					continue
+				}
+			}
+
+			// All the checks have being done beforehand so it should be ok
+			_ = s.decoder.Decode(buf[1:], &data)
+			s.handler(data)
+
 		} else {
 			s.connect()
 		}

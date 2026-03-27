@@ -110,8 +110,8 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 		return v, err
 	}
 
-	// Todo make differnet errors.
-	// for now assume errr is handler error
+	// Todo make different errors.
+	// for now assume err is handler error
 	if buf[0] != globals.OK_STATUS_CODE {
 		return v, fmt.Errorf(globals.ERROR_SERVICE_HANDLER)
 	}

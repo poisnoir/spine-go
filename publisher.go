@@ -7,6 +7,7 @@ import (
 	"net"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
@@ -16,14 +17,20 @@ import (
 )
 
 type Publisher[K any] struct {
-	namespace    *Namespace
-	name         string
-	listener     *kcp.Listener
-	server       *zeroconf.Server
-	encoder      *mad.Mad[K]
-	errorEncoder *mad.Mad[string]
-	logger       *slog.Logger
-	clients      []*client[K]
+	name      string
+	namespace *Namespace
+	server    *zeroconf.Server
+	logger    *slog.Logger
+	encoder   *mad.Mad[K]
+
+	listener   *kcp.Listener
+	clients    []io.ReadWriteCloser
+	clientMu   sync.RWMutex
+	deadClient chan io.ReadWriteCloser
+
+	sendSig    chan struct{}
+	lastDataMu sync.RWMutex
+	lastData   K
 }
 
 func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
@@ -61,6 +68,7 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 		listener:  listener,
 		encoder:   encoder,
 		server:    server,
+		sendSig:   make(chan struct{}),
 	}
 
 	go runListener(listener, logger, p.registerSubscriber)
@@ -70,20 +78,92 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 
 func (p *Publisher[K]) run() {
 
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.sendSig:
+			p.lastDataMu.RLock()
+			tempData := p.lastData
+			p.lastDataMu.RUnlock()
+
+			payloadSize := p.encoder.GetRequiredSize(&tempData)
+			if payloadSize > globals.MAX_PACKET_SIZE {
+				p.logger.Error("payload size too big", "size", payloadSize)
+				continue
+			}
+			ticker.Reset(10 * time.Second)
+			bufPtr := p.namespace.bufferPool.Get().(*[]byte)
+			buf := *bufPtr
+			p.encoder.Encode(&tempData, buf)
+
+			var wg sync.WaitGroup
+
+			p.clientMu.RLock()
+			snapClients := make([]io.ReadWriteCloser, len(p.clients))
+			copy(snapClients, p.clients)
+			p.clientMu.RUnlock()
+
+			for _, client := range snapClients {
+				wg.Add(1)
+				go func(target io.ReadWriteCloser) {
+					_, err := write(target, buf, payloadSize, false)
+					if err != nil {
+						select {
+						case p.deadClient <- target:
+						default:
+						}
+					}
+					wg.Done()
+				}(client)
+			}
+
+			go func(b *[]byte) {
+				wg.Wait()
+				p.namespace.bufferPool.Put(b)
+			}(bufPtr)
+
+		case deadClient := <-p.deadClient:
+			p.clientMu.Lock()
+			p.clients = slices.DeleteFunc(p.clients, func(c io.ReadWriteCloser) bool {
+				return c == deadClient
+			})
+			deadClient.Close()
+			p.clientMu.Unlock()
+
+		case <-ticker.C:
+			p.clientMu.RLock()
+			snapClients := make([]io.ReadWriteCloser, len(p.clients))
+			copy(snapClients, p.clients)
+			p.clientMu.RUnlock()
+			for _, client := range snapClients {
+				go func(conn io.ReadWriteCloser) {
+					err := ping(conn)
+					if err != nil {
+						select {
+						case p.deadClient <- conn:
+						default:
+						}
+					}
+				}(client)
+			}
+		}
+	}
 }
 
 func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 
 	var err error
+	bufPtr := p.namespace.bufferPool.Get().(*[]byte)
+	buf := *bufPtr
+
 	defer func() {
 		if err != nil {
 			conn.Close()
 		}
+		p.namespace.bufferPool.Put(bufPtr)
 	}()
-
-	bufPtr := p.namespace.bufferPool.Get().(*[]byte)
-	defer p.namespace.bufferPool.Put(bufPtr)
-	buf := *bufPtr
 
 	_, err = conn.Read(make([]byte, 1))
 	if err != nil {
@@ -105,43 +185,19 @@ func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 		return
 	}
 
-	c := newClient[K](conn)
-	p.clients = append(p.clients, c)
+	p.clientMu.Lock()
+	p.clients = append(p.clients, conn)
+	p.clientMu.Unlock()
+
 }
 
-func (p *Publisher[K]) Publish(data K) error {
+func (p *Publisher[K]) Publish(data K) {
+	p.lastDataMu.Lock()
+	p.lastData = data
+	p.lastDataMu.Unlock()
 
-	packetSize := uint32(p.encoder.GetRequiredSize(&data))
-	buf := make([]byte, int(packetSize)+5)
-
-
-	return nil
-}
-
-func (p *Publisher[K]) sendToSubscribers(conn io.ReadWriteCloser) {
-	bufPtr := p.namespace.bufferPool.Get().(*[]byte)
-	defer p.namespace.bufferPool.Put(bufPtr)
-}
-
-func (p *Publisher[K]) Subscribers() []string {
-	return nil
-}
-
-type client[K any] struct {
-	conn     io.ReadWriteCloser
-	data     K
-	dataLock sync.RWMutex
-	sendSig  chan struct{}
-}
-
-func newClient[K any](conn io.ReadWriteCloser) *client[K] {
-	c := &client[K]{
-		conn:    conn,
-		sendSig: make(chan struct{}),
+	select {
+	case p.sendSig <- struct{}{}:
+	default:
 	}
-
-	ping(conn io.ReadWriteCloser)
-
-	return c
 }
-func (c *client[K]) Close() {}
