@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
 	"github.com/xtaci/kcp-go/v5"
@@ -73,7 +74,8 @@ func (s *Subscriber[K]) run() {
 			s.handler(data)
 
 		} else {
-			s.connect()
+			bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), s.ctx)
+			_ = backoff.Retry(s.connect, bo)
 		}
 	}
 }

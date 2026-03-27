@@ -14,7 +14,7 @@ func main() {
 	ns, _ := spine.JointNamespace("example", "meow", logger, false)
 
 	handle1 := func(temp uint32) {
-		fmt.Printf("sub 1: %d\n", temp)
+		fmt.Println(temp / 256) // no fucking clue why 256 :(
 	}
 
 	//handle2 := func(temp uint32) {

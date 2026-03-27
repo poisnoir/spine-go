@@ -23,7 +23,7 @@ func main() {
 	for {
 		pub.Publish(temp)
 		temp++
-		time.Sleep(time.Second)
+		time.Sleep(time.Millisecond * 15) // around 60 per sec
 	}
 
 }
