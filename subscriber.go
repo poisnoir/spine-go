@@ -3,7 +3,6 @@ package spine
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/poisnoir/mad-go"
 	"github.com/poisnoir/spine-go/internal/globals"
@@ -32,6 +31,7 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	sub := &Subscriber[K]{
+		namespace:    namespace,
 		subscribedTo: topic,
 		handler:      handler,
 		ctx:          ctx,
@@ -40,6 +40,8 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 		isConnected:  false,
 	}
 
+	go sub.run()
+
 	return sub, nil
 }
 
@@ -47,14 +49,6 @@ func (s *Subscriber[K]) run() {
 
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	buf := *bufPtr
-
-	ticker := time.NewTicker(15 * time.Second)
-
-	defer func() {
-		ticker.Stop()
-		s.namespace.bufferPool.Put(buf)
-		s.cancel()
-	}()
 
 	var data K
 

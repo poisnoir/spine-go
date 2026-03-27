@@ -54,24 +54,28 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 	}
 
 	server, err := zeroconf.Register(
-		name+globals.ZERO_CONF_PUBLISHER_PREFIX,
-		globals.ZERO_CONF_TYPE,
+		globals.ZERO_CONF_SERVICE_PREFIX+name,
+		ns.Name()+globals.ZERO_CONF_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Addr().(*net.UDPAddr).Port,
-		[]string{"id=botzilla_publish_" + name},
+		[]string{"id=spine_service_" + name},
 		nil,
 	)
 
 	p := &Publisher[K]{
-		namespace: ns,
-		name:      name,
-		listener:  listener,
-		encoder:   encoder,
-		server:    server,
-		sendSig:   make(chan struct{}),
+		namespace:  ns,
+		name:       name,
+		listener:   listener,
+		encoder:    encoder,
+		server:     server,
+		logger:     logger,
+		sendSig:    make(chan struct{}, 1),
+		deadClient: make(chan io.ReadWriteCloser, 64),
+		clients:    make([]io.ReadWriteCloser, 0),
 	}
 
 	go runListener(listener, logger, p.registerSubscriber)
+	go p.run()
 
 	return p, nil
 }

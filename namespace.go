@@ -75,6 +75,6 @@ func (ns *Namespace) GetService(name string, ctx context.Context) (string, error
 	return ns.reg.Lookup(ctx, globals.ZERO_CONF_SERVICE_PREFIX+name)
 }
 
-func (ns *Namespace) GetPublisher(ctx context.Context, name string) (string, error) {
+func (ns *Namespace) GetPublisher(name string, ctx context.Context) (string, error) {
 	return ns.reg.Lookup(ctx, globals.ZERO_CONF_PUBLISHER_PREFIX+name)
 }
