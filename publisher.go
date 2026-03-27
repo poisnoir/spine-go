@@ -169,11 +169,6 @@ func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 		p.namespace.bufferPool.Put(bufPtr)
 	}()
 
-	_, err = conn.Read(make([]byte, 1))
-	if err != nil {
-		return
-	}
-
 	n, err := conn.Read(buf)
 	if err != nil {
 		return
@@ -181,6 +176,7 @@ func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 
 	if !slices.Equal([]byte(p.encoder.Code()), buf[:n]) {
 		err = fmt.Errorf("invalid data code")
+		conn.Write([]byte{globals.ERROR_MISMATCH_PAYLOAD_CODE})
 		return
 	}
 

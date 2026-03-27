@@ -22,7 +22,8 @@ func main() {
 	var temp uint32 = 0
 	for {
 		pub.Publish(temp)
-		time.Sleep(time.Millisecond * 10)
+		temp++
+		time.Sleep(time.Second)
 	}
 
 }
