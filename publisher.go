@@ -92,7 +92,7 @@ func (p *Publisher[K]) run() {
 			tempData := p.lastData
 			p.lastDataMu.RUnlock()
 
-			payloadSize := p.encoder.GetRequiredSize(&tempData)
+			payloadSize := p.encoder.GetRequiredSize(&tempData) + 1
 			if payloadSize > globals.MAX_PACKET_SIZE {
 				p.logger.Error("payload size too big", "size", payloadSize)
 				continue
@@ -100,7 +100,8 @@ func (p *Publisher[K]) run() {
 			ticker.Reset(10 * time.Second)
 			bufPtr := p.namespace.bufferPool.Get().(*[]byte)
 			buf := *bufPtr
-			p.encoder.Encode(&tempData, buf)
+			buf[0] = globals.PUBLISER_PUSH
+			p.encoder.Encode(&tempData, buf[1:])
 
 			var wg sync.WaitGroup
 
