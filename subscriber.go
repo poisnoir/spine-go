@@ -3,6 +3,7 @@ package spine
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/poisnoir/mad-go"
@@ -17,6 +18,9 @@ type Subscriber[K any] struct {
 	namespace    *Namespace
 	ctx          context.Context
 	cancel       context.CancelFunc
+	mutex        sync.RWMutex
+	lastData     K
+	pushSig      chan struct{}
 	decoder      *mad.Mad[K]
 	errorEncoder *mad.Mad[string]
 	isConnected  bool
@@ -36,14 +40,31 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 		subscribedTo: topic,
 		handler:      handler,
 		ctx:          ctx,
+		pushSig:      make(chan struct{}, 1),
 		cancel:       cancel,
 		decoder:      decoder,
 		isConnected:  false,
 	}
 
 	go sub.run()
+	go sub.runHandler()
 
 	return sub, nil
+}
+
+func (s *Subscriber[K]) runHandler() {
+	for {
+
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-s.pushSig:
+			s.mutex.RLock()
+			snap := s.lastData
+			s.mutex.RUnlock()
+			s.handler(snap)
+		}
+	}
 }
 
 func (s *Subscriber[K]) run() {
@@ -69,9 +90,16 @@ func (s *Subscriber[K]) run() {
 				}
 			}
 
-			// All the checks have being done beforehand so it should be ok
-			_ = s.decoder.Decode(buf[1:], &data)
-			s.handler(data)
+			s.decoder.Decode(buf[1:], &data)
+
+			s.mutex.Lock()
+			s.lastData = data
+			s.mutex.Unlock()
+
+			select {
+			case s.pushSig <- struct{}{}:
+			default:
+			}
 
 		} else {
 			bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), s.ctx)
