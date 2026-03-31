@@ -143,7 +143,5 @@ func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keySerializer *m
 			logger.Error("failed to write from connection", "error", err)
 			return
 		}
-
 	}
-
 }

@@ -80,3 +80,7 @@ func (ts *ThreadedService[K, V]) processRequest(key K) serviceOutput[V] {
 	result, err := ts.handler(key)
 	return serviceOutput[V]{data: result, err: err}
 }
+
+func (ts *ThreadedService[K, V]) Close() {
+	ts.cancel()
+}

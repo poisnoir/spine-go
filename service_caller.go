@@ -71,28 +71,32 @@ func (sc *ServiceCaller[K, V]) run() {
 	defer ticker.Stop()
 
 	for {
-		if sc.isConnected {
-			select {
-			case <-ticker.C:
-				if err := ping(sc.conn); err != nil {
-					sc.isConnected = false
+		select {
+		case <-sc.ctx.Done():
+			sc.conn.Close()
+			return
+		default:
+			if sc.isConnected {
+				select {
+				case <-ticker.C:
+					if err := ping(sc.conn); err != nil {
+						sc.isConnected = false
+					}
+				case requestData := <-sc.requests:
+					// Postpone heartbeat
+					ticker.Reset(10 * time.Second)
+					output, err := sc.send(requestData.input)
+					if err != nil {
+						sc.isConnected = false
+					}
+					requestData.output <- serviceOutput[V]{data: output, err: err}
 				}
-			case requestData := <-sc.requests:
-				// Postpone heartbeat
-				ticker.Reset(10 * time.Second)
-				output, err := sc.send(requestData.input)
-				if err != nil {
-					sc.isConnected = false
-				}
-				requestData.output <- serviceOutput[V]{data: output, err: err}
-			// Todo: close the service caller
-			case <-sc.ctx.Done():
-				return
+			} else {
+				bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), sc.ctx)
+				_ = backoff.Retry(sc.connect, bo)
 			}
-		} else {
-			bo := backoff.WithContext(backoff.NewExponentialBackOff(backoff.WithMaxElapsedTime(0)), sc.ctx)
-			_ = backoff.Retry(sc.connect, bo)
 		}
+
 	}
 }
 
