@@ -110,6 +110,7 @@ func (s *Service[K, V]) runHandler() {
 			request.output <- serviceOutput[V]{data: response, err: err}
 			s.namespace.logger.Info("handled request", "request", request, "response", response)
 		case <-s.context.Done():
+			s.listener.Close()
 			return
 		}
 	}

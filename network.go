@@ -46,11 +46,3 @@ func ping(conn io.ReadWriteCloser) error {
 
 	return nil
 }
-
-func handlerReceiver(conn io.ReadWriteCloser, handler func([]byte)) {
-
-	for {
-
-	}
-
-}
