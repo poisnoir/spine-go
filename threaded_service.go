@@ -11,17 +11,20 @@ import (
 )
 
 type ThreadedService[K any, V any] struct {
-	name         string
-	server       *zeroconf.Server
-	namespace    *Namespace
-	context      context.Context
-	listener     *kcp.Listener
-	cancel       context.CancelFunc
-	handler      func(K) (V, error)
-	keyEncoder   *mad.Mad[K]
-	valueEncoder *mad.Mad[V]
-	errorEncoder *mad.Mad[string]
-	requests     chan serviceRequest[K, V]
+	namespace *Namespace
+	name      string
+	server    *zeroconf.Server
+
+	context  context.Context
+	cancel   context.CancelFunc
+	listener *kcp.Listener
+
+	keySerializer   *mad.Mad[K]
+	valueSerializer *mad.Mad[V]
+	errorSerializer *mad.Mad[string]
+
+	requests chan serviceRequest[K, V]
+	handler  func(K) (V, error)
 }
 
 func NewThreadedService[K any, V any](namespace *Namespace, name string, handler func(K) (V, error)) (*ThreadedService[K, V], error) {
@@ -35,17 +38,19 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	ts := &ThreadedService[K, V]{
-		name:         name,
-		server:       server,
-		namespace:    namespace,
-		handler:      handler,
-		context:      ctx,
-		listener:     listener,
-		keyEncoder:   keyEnc,
-		valueEncoder: valueEnc,
-		errorEncoder: errEnc,
-		cancel:       cancel,
-		requests:     make(chan serviceRequest[K, V], 100),
+		namespace: namespace,
+		name:      name,
+		server:    server,
+
+		context: ctx,
+		cancel:  cancel,
+
+		handler:         handler,
+		keySerializer:   keyEnc,
+		valueSerializer: valueEnc,
+
+		errorSerializer: errEnc,
+		requests:        make(chan serviceRequest[K, V], 100),
 	}
 
 	// todo fix me pls
@@ -67,13 +72,11 @@ func (s *ThreadedService[K, V]) clientHandler(conn io.ReadWriteCloser) {
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
 
-	handleCallerRequest(conn, s.keyEncoder, s.valueEncoder, *bufPtr, s.processRequest, logger)
+	handleCallerRequest(conn, s.keySerializer, s.valueSerializer, s.errorSerializer, *bufPtr, s.processRequest, logger)
 
 }
 
 func (ts *ThreadedService[K, V]) processRequest(key K) serviceOutput[V] {
-	// send to handler
-
 	result, err := ts.handler(key)
 	return serviceOutput[V]{data: result, err: err}
 }

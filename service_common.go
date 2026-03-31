@@ -90,10 +90,10 @@ func establishConnection(conn io.ReadWriteCloser, keyCode []byte, valueCode []by
 	return err
 }
 
-func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.Mad[K], valueEncoder *mad.Mad[V], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
+func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keySerializer *mad.Mad[K], valueSerializer *mad.Mad[V], errorSerializer *mad.Mad[string], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
 
 	defer conn.Close()
-	err := establishConnection(conn, []byte(keyEncoder.Code()), []byte(valueEncoder.Code()), buf, logger)
+	err := establishConnection(conn, []byte(keySerializer.Code()), []byte(valueSerializer.Code()), buf, logger)
 	if err != nil {
 		return
 	}
@@ -118,7 +118,7 @@ func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.
 		}
 
 		var key K
-		err = keyEncoder.Decode(buf[1:n], &key)
+		err = keySerializer.Decode(buf[1:n], &key)
 		if err != nil {
 			logger.Error("unable to decode key", "error", err)
 			continue
@@ -127,15 +127,18 @@ func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keyEncoder *mad.
 		res := processRequest(key)
 		if res.err != nil {
 			logger.Error("handler failed", "error", err)
-			_, err = conn.Write([]byte{globals.ERROR_SERVICE_ERROR_CODE})
+			errMsg := res.err.Error()
+			buf[0] = globals.ERROR_SERVICE_ERROR_CODE
+			errorSerializer.Encode(&errMsg, buf[1:])
+			_, err = conn.Write(buf)
 			if err != nil {
 				logger.Error("failed to write from connection", "error", err)
 				return
 			}
 		}
 
-		valueEncoder.Encode(&res.data, buf)
-		_, err = conn.Write(buf[:valueEncoder.GetRequiredSize(&res.data)])
+		valueSerializer.Encode(&res.data, buf)
+		_, err = conn.Write(buf[:valueSerializer.GetRequiredSize(&res.data)])
 		if err != nil {
 			logger.Error("failed to write from connection", "error", err)
 			return

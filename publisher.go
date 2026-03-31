@@ -17,11 +17,12 @@ import (
 )
 
 type Publisher[K any] struct {
-	name      string
 	namespace *Namespace
+	name      string
 	server    *zeroconf.Server
 	logger    *slog.Logger
-	encoder   *mad.Mad[K]
+
+	serializer *mad.Mad[K]
 
 	listener   *kcp.Listener
 	clients    []io.ReadWriteCloser
@@ -42,7 +43,7 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 		"new publisher",
 	)
 
-	encoder, err := mad.NewMad[K]()
+	serializer, err := mad.NewMad[K]()
 	if err != nil {
 		return nil, err
 	}
@@ -63,15 +64,18 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 	)
 
 	p := &Publisher[K]{
-		namespace:  ns,
-		name:       name,
+		namespace: ns,
+		name:      name,
+		server:    server,
+		logger:    logger,
+
+		serializer: serializer,
+
 		listener:   listener,
-		encoder:    encoder,
-		server:     server,
-		logger:     logger,
-		sendSig:    make(chan struct{}, 1),
 		deadClient: make(chan io.ReadWriteCloser, 100),
 		clients:    make([]io.ReadWriteCloser, 0),
+
+		sendSig: make(chan struct{}, 1),
 	}
 
 	go runListener(listener, logger, p.registerSubscriber)
@@ -92,7 +96,7 @@ func (p *Publisher[K]) run() {
 			tempData := p.lastData
 			p.lastDataMu.RUnlock()
 
-			payloadSize := p.encoder.GetRequiredSize(&tempData) + 1
+			payloadSize := p.serializer.GetRequiredSize(&tempData) + 1
 			if payloadSize > globals.MAX_PACKET_SIZE {
 				p.logger.Error("payload size too big", "size", payloadSize)
 				continue
@@ -101,7 +105,7 @@ func (p *Publisher[K]) run() {
 			bufPtr := p.namespace.bufferPool.Get().(*[]byte)
 			buf := *bufPtr
 			buf[0] = globals.PUBLISER_PUSH
-			p.encoder.Encode(&tempData, buf[1:])
+			p.serializer.Encode(&tempData, buf[1:])
 
 			var wg sync.WaitGroup
 
@@ -175,7 +179,7 @@ func (p *Publisher[K]) registerSubscriber(conn io.ReadWriteCloser) {
 		return
 	}
 
-	if !slices.Equal([]byte(p.encoder.Code()), buf[:n]) {
+	if !slices.Equal([]byte(p.serializer.Code()), buf[:n]) {
 		err = fmt.Errorf("invalid data code")
 		conn.Write([]byte{globals.ERROR_MISMATCH_PAYLOAD_CODE})
 		return

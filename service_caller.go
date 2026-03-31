@@ -12,44 +12,50 @@ import (
 )
 
 type ServiceCaller[K any, V any] struct {
-	namespace    *Namespace
-	serviceName  string
-	keyEncoder   *mad.Mad[K]
-	valueEncoder *mad.Mad[V]
-	errorEncoder *mad.Mad[string]
-	conn         *kcp.UDPSession
-	ctx          context.Context
-	requests     chan serviceRequest[K, V]
-	isConnected  bool
-	cancel       context.CancelFunc
+	namespace   *Namespace
+	serviceName string
+
+	keySerializer   *mad.Mad[K]
+	valueSerializer *mad.Mad[V]
+	errorSerializer *mad.Mad[string]
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	conn        *kcp.UDPSession
+	requests    chan serviceRequest[K, V]
+	isConnected bool
 }
 
 func NewServiceCaller[K any, V any](namespace *Namespace, serviceName string) (*ServiceCaller[K, V], error) {
 
-	keyEnc, err := mad.NewMad[K]()
+	keySer, err := mad.NewMad[K]()
 	if err != nil {
 		return nil, err
 	}
 
-	valueEnc, err := mad.NewMad[V]()
+	valueSer, err := mad.NewMad[V]()
 	if err != nil {
 		return nil, err
 	}
 
-	errEnc, _ := mad.NewMad[string]()
+	errSer, _ := mad.NewMad[string]()
 
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	sc := &ServiceCaller[K, V]{
-		namespace:    namespace,
-		keyEncoder:   keyEnc,
-		valueEncoder: valueEnc,
-		serviceName:  serviceName,
-		ctx:          ctx,
-		cancel:       cancel,
-		errorEncoder: errEnc,
-		isConnected:  false,
-		requests:     make(chan serviceRequest[K, V], 100),
+		namespace:   namespace,
+		serviceName: serviceName,
+
+		keySerializer:   keySer,
+		valueSerializer: valueSer,
+		errorSerializer: errSer,
+
+		ctx:    ctx,
+		cancel: cancel,
+
+		isConnected: false,
+		requests:    make(chan serviceRequest[K, V], 100),
 	}
 
 	go sc.run()
@@ -94,7 +100,7 @@ func (sc *ServiceCaller[K, V]) run() {
 func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	var v V
 
-	requestSize := sc.keyEncoder.GetRequiredSize(&key) + 1
+	requestSize := sc.keySerializer.GetRequiredSize(&key) + 1
 	if requestSize > globals.MAX_PACKET_SIZE {
 		return v, fmt.Errorf(globals.ERROR_PAYLOAD_SIZE)
 	}
@@ -103,20 +109,20 @@ func (sc *ServiceCaller[K, V]) send(key K) (V, error) {
 	defer sc.namespace.bufferPool.Put(bufPtr)
 	buf := *bufPtr
 	buf[0] = globals.SERVICE_REQUEST
-	sc.keyEncoder.Encode(&key, buf[1:])
+	sc.keySerializer.Encode(&key, buf[1:])
 
 	_, err := write(sc.conn, buf, requestSize, true)
 	if err != nil {
 		return v, err
 	}
 
-	// Todo make different errors.
-	// for now assume err is handler error
 	if buf[0] != globals.OK_STATUS_CODE {
-		return v, fmt.Errorf(globals.ERROR_SERVICE_HANDLER)
+		var errMsg string
+		_ = sc.errorSerializer.Decode(buf[1:], &errMsg)
+		return v, fmt.Errorf("call error: %s", errMsg)
 	}
 
-	_ = sc.valueEncoder.Decode(buf, &v)
+	_ = sc.valueSerializer.Decode(buf, &v)
 	return v, nil
 }
 
@@ -172,7 +178,7 @@ func (sc *ServiceCaller[K, V]) connect() error {
 	buf := *bufPtr
 
 	// validating input/output service types
-	keyCode := sc.keyEncoder.Code()
+	keyCode := sc.keySerializer.Code()
 	n := copy(buf, keyCode)
 
 	n, err = write(sess, buf, n, true)
@@ -189,7 +195,7 @@ func (sc *ServiceCaller[K, V]) connect() error {
 		return err
 	}
 
-	valueCode := sc.valueEncoder.Code()
+	valueCode := sc.valueSerializer.Code()
 	n = copy(buf, valueCode)
 
 	n, err = write(sess, buf, n, true)

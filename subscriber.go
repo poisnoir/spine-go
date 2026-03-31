@@ -12,18 +12,20 @@ import (
 )
 
 type Subscriber[K any] struct {
-	subscribedTo string
-	handler      func(K)
-	conn         *kcp.UDPSession
 	namespace    *Namespace
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mutex        sync.RWMutex
-	lastData     K
-	pushSig      chan struct{}
-	decoder      *mad.Mad[K]
-	errorEncoder *mad.Mad[string]
-	isConnected  bool
+	subscribedTo string
+
+	conn        *kcp.UDPSession
+	ctx         context.Context
+	cancel      context.CancelFunc
+	isConnected bool
+
+	mutex    sync.RWMutex
+	lastData K
+	handler  func(K)
+	pushSig  chan struct{}
+
+	serializer *mad.Mad[K]
 }
 
 func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (*Subscriber[K], error) {
@@ -38,12 +40,15 @@ func NewSubscriber[K any](namespace *Namespace, topic string, handler func(K)) (
 	sub := &Subscriber[K]{
 		namespace:    namespace,
 		subscribedTo: topic,
-		handler:      handler,
-		ctx:          ctx,
-		pushSig:      make(chan struct{}, 1),
-		cancel:       cancel,
-		decoder:      decoder,
-		isConnected:  false,
+
+		ctx:         ctx,
+		cancel:      cancel,
+		isConnected: false,
+
+		handler: handler,
+		pushSig: make(chan struct{}, 1),
+
+		serializer: decoder,
 	}
 
 	go sub.run()
@@ -90,7 +95,7 @@ func (s *Subscriber[K]) run() {
 				}
 			}
 
-			s.decoder.Decode(buf[1:], &data)
+			s.serializer.Decode(buf[1:], &data)
 
 			s.mutex.Lock()
 			s.lastData = data
@@ -137,7 +142,7 @@ func (s *Subscriber[K]) connect() error {
 	buf := *bufPtr
 
 	// validating input/output service types
-	keyCode := s.decoder.Code()
+	keyCode := s.serializer.Code()
 	n := copy(buf, keyCode)
 
 	n, err = write(sess, buf, n, true)
