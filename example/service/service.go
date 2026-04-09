@@ -10,7 +10,7 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ns, _ := spine.JointNamespace("example", "meow", logger, false)
+	ns, _ := spine.JointNamespace("example", "meow", logger)
 
 	lenFunc := func(input string) (uint32, error) {
 		return uint32(len(input)), nil

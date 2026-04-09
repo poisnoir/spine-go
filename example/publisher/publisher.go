@@ -12,7 +12,7 @@ import (
 func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ns, _ := spine.JointNamespace("example", "meow", logger, false)
+	ns, _ := spine.JointNamespace("example", "meow", logger)
 
 	pub, err := spine.NewPublisher[uint32](ns, "temperature")
 	if err != nil {

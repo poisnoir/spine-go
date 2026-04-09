@@ -11,7 +11,7 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ns, _ := spine.JointNamespace("example", "meow", logger, false)
+	ns, _ := spine.JointNamespace("example", "meow", logger)
 
 	ctx, _ := context.WithCancel(context.Background())
 
