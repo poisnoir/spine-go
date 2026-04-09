@@ -11,7 +11,7 @@ import (
 
 func TestService(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("test_service", "secret", logger, false)
+	ns, err := JointNamespace("test_service", "secret", logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestService(t *testing.T) {
 
 func TestThreadedService(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("test_threaded_service", "secret", logger, false)
+	ns, err := JointNamespace("test_threaded_service", "secret", logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestThreadedService(t *testing.T) {
 
 func TestServiceCaller_ContextCancel(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("test_cancel", "secret", logger, false)
+	ns, err := JointNamespace("test_cancel", "secret", logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestServiceCaller_ContextCancel(t *testing.T) {
 
 func TestThreadedService_Parallel(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("test_parallel", "secret", logger, false)
+	ns, err := JointNamespace("test_parallel", "secret", logger)
 	if err != nil {
 		t.Fatal(err)
 	}

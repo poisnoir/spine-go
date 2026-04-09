@@ -21,23 +21,19 @@ type Namespace struct {
 	encryption kcp.BlockCrypt // will be set to nill if useEncryption is false, will use hmac instead
 }
 
-func JointNamespace(name string, secretKey string, logger *slog.Logger, useEncryption bool) (*Namespace, error) {
+func JointNamespace(name string, secretKey string, logger *slog.Logger) (*Namespace, error) {
 
-	var enyption kcp.BlockCrypt = nil
-	if useEncryption {
-		var err error
-		key := sha256.Sum256([]byte(secretKey))
-		enyption, err = kcp.NewAESBlockCrypt(key[:])
-		if err != nil {
-			return nil, err
-		}
+	key := sha256.Sum256([]byte(secretKey))
+	encryption, err := kcp.NewAESBlockCrypt(key[:])
+	if err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ns := &Namespace{
 		name:       name,
 		secretKey:  secretKey,
-		encryption: enyption,
+		encryption: encryption,
 		cancel:     cancel,
 		logger:     logger,
 		ctx:        ctx,

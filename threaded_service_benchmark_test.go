@@ -9,7 +9,7 @@ import (
 
 func BenchmarkThreadedServiceCall(b *testing.B) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("bench_threaded", "secret", logger, false)
+	ns, err := JointNamespace("bench_threaded", "secret", logger)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func BenchmarkThreadedServiceCall(b *testing.B) {
 
 func BenchmarkThreadedServiceCallEncrypted(b *testing.B) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("bench_threaded_encrypted", "secret", logger, true)
+	ns, err := JointNamespace("bench_threaded_encrypted", "secret", logger)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func BenchmarkThreadedServiceCallEncrypted(b *testing.B) {
 
 func BenchmarkThreadedServiceCallParallel(b *testing.B) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	ns, err := JointNamespace("bench_threaded_parallel", "secret", logger, false)
+	ns, err := JointNamespace("bench_threaded_parallel", "secret", logger)
 	if err != nil {
 		b.Fatal(err)
 	}
