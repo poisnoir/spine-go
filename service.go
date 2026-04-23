@@ -17,7 +17,6 @@ type Service[K any, V any] struct {
 
 	keySerializer   *mad.Mad[K]
 	valueSerializer *mad.Mad[V]
-	errorSerializer *mad.Mad[string]
 
 	context  context.Context
 	listener *kcp.Listener
@@ -32,12 +31,11 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 	// fix me pls
 	logger := namespace.logger
 
-	keyEnc, valueEnc, listener, server, err := generateService[K, V](namespace, name)
+	keySer, valueSer, listener, server, err := generateService[K, V](namespace, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service: %v", err)
 	}
 
-	errEnc, _ := mad.NewMad[string]()
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	s := &Service[K, V]{
@@ -45,9 +43,8 @@ func NewService[K any, V any](namespace *Namespace, name string, handler func(K)
 		name:      name,
 		server:    server,
 
-		keySerializer:   keyEnc,
-		valueSerializer: valueEnc,
-		errorSerializer: errEnc,
+		keySerializer:   keySer,
+		valueSerializer: valueSer,
 
 		context:  ctx,
 		cancel:   cancel,
@@ -74,7 +71,15 @@ func (s *Service[K, V]) clientHandler(conn io.ReadWriteCloser) {
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
 
-	handleCallerRequest(conn, s.keySerializer, s.valueSerializer, s.errorSerializer, *bufPtr, s.processRequest, logger)
+	handleCallerRequest(
+		conn,
+		s.keySerializer,
+		s.valueSerializer,
+		s.namespace.stringSerializer,
+		*bufPtr,
+		s.processRequest,
+		logger,
+	)
 
 }
 

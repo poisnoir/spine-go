@@ -13,16 +13,19 @@ const PING_CODE uint8 = 1
 const PONG_CODE uint8 = 2
 const SERVICE_REQUEST uint8 = 3
 const PUBLISER_PUSH uint8 = 4
+const NAMESPACE_INFO uint8 = 5
 
+const ERROR_SERIALIZER_ERROR_CODE uint8 = 251
 const ERROR_SERVICE_ERROR_CODE uint8 = 252
 const ERROR_INVALID_OPERATION_CODE uint8 = 253
 const ERROR_MISMATCH_PAYLOAD_CODE uint8 = 254
 const ERROR_HANDLER_INTERNAL_ERROR_CODE uint8 = 255
 
 // Zero conf
-const ZERO_CONF_PUBLISHER_PREFIX = "publisher_"
-const ZERO_CONF_SERVICE_PREFIX = "service_"
-const ZERO_CONF_TYPE = "_botzilla._tcp"
+const ZERO_CONF_PUBLISHER = "publisher"
+const ZERO_CONF_SERVICE = "service"
+const ZERO_CONF_NODE_TYPE = "_spine._tcp"
+const ZERO_CONF_NAMESPACE_TYPE = "_namespace_.spine._tcp"
 const ZERO_CONF_DOMAIN = "local."
 
 const ERROR_SERVICE_HANDLER = "service handler has an error"

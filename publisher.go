@@ -36,13 +36,6 @@ type Publisher[K any] struct {
 
 func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 
-	logger := ns.logger.With(
-		ns.Name(),
-		"publiser",
-		name,
-		"new publisher",
-	)
-
 	serializer, err := mad.NewMad[K]()
 	if err != nil {
 		return nil, err
@@ -50,24 +43,28 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 
 	listener, err := kcp.ListenWithOptions(":0", ns.encryption, 10, 3)
 	if err != nil {
-		logger.Error("unable to create listener", "error", err)
 		return nil, err
 	}
 
 	server, err := zeroconf.Register(
-		globals.ZERO_CONF_SERVICE_PREFIX+name,
-		ns.Name()+globals.ZERO_CONF_TYPE,
+		name,
+		ns.Name()+globals.ZERO_CONF_NODE_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Addr().(*net.UDPAddr).Port,
-		[]string{"id=spine_service_" + name},
+		[]string{
+			"type=" + globals.ZERO_CONF_PUBLISHER,
+		},
 		nil,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	p := &Publisher[K]{
 		namespace: ns,
 		name:      name,
 		server:    server,
-		logger:    logger,
+		logger:    ns.logger,
 
 		serializer: serializer,
 
@@ -78,7 +75,7 @@ func NewPublisher[K any](ns *Namespace, name string) (*Publisher[K], error) {
 		sendSig: make(chan struct{}, 1),
 	}
 
-	go runListener(listener, logger, p.registerSubscriber)
+	go runListener(listener, ns.logger, p.registerSubscriber)
 	go p.run()
 
 	return p, nil

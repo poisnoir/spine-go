@@ -21,7 +21,6 @@ type ThreadedService[K any, V any] struct {
 
 	keySerializer   *mad.Mad[K]
 	valueSerializer *mad.Mad[V]
-	errorSerializer *mad.Mad[string]
 
 	requests chan serviceRequest[K, V]
 	handler  func(K) (V, error)
@@ -34,7 +33,6 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 		return nil, fmt.Errorf("failed to create service: %v", err)
 	}
 
-	errEnc, _ := mad.NewMad[string]()
 	ctx, cancel := context.WithCancel(namespace.ctx)
 
 	ts := &ThreadedService[K, V]{
@@ -49,8 +47,7 @@ func NewThreadedService[K any, V any](namespace *Namespace, name string, handler
 		keySerializer:   keyEnc,
 		valueSerializer: valueEnc,
 
-		errorSerializer: errEnc,
-		requests:        make(chan serviceRequest[K, V], 100),
+		requests: make(chan serviceRequest[K, V], 100),
 	}
 
 	// todo fix me pls
@@ -72,7 +69,7 @@ func (s *ThreadedService[K, V]) clientHandler(conn io.ReadWriteCloser) {
 	bufPtr := s.namespace.bufferPool.Get().(*[]byte)
 	defer s.namespace.bufferPool.Put(bufPtr)
 
-	handleCallerRequest(conn, s.keySerializer, s.valueSerializer, s.errorSerializer, *bufPtr, s.processRequest, logger)
+	handleCallerRequest(conn, s.keySerializer, s.valueSerializer, s.namespace.stringSerializer, *bufPtr, s.processRequest, logger)
 
 }
 

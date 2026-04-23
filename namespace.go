@@ -6,19 +6,26 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/poisnoir/spine-go/internal/globals"
+	"github.com/grandcat/zeroconf"
+	"github.com/poisnoir/mad-go"
 	"github.com/xtaci/kcp-go/v5"
 )
 
 type Namespace struct {
-	name       string
-	secretKey  string // key used for generating hmac. Do not share it in the network!!!
-	reg        *Registry
-	ctx        context.Context
-	cancel     context.CancelFunc
-	logger     *slog.Logger
-	bufferPool sync.Pool
+	name string
+	reg  *Registry
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	encryption kcp.BlockCrypt // will be set to nill if useEncryption is false, will use hmac instead
+
+	logger           *slog.Logger
+	bufferPool       sync.Pool
+	stringSerializer *mad.Mad[string]
+
+	listener *kcp.Listener
+	server   *zeroconf.Server
 }
 
 func JointNamespace(name string, secretKey string, logger *slog.Logger) (*Namespace, error) {
@@ -29,18 +36,23 @@ func JointNamespace(name string, secretKey string, logger *slog.Logger) (*Namesp
 		return nil, err
 	}
 
+	stringSer, _ := mad.NewMad[string]()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	ns := &Namespace{
-		name:       name,
-		secretKey:  secretKey,
+		name: name,
+
 		encryption: encryption,
-		cancel:     cancel,
-		logger:     logger,
-		ctx:        ctx,
+
+		ctx:    ctx,
+		cancel: cancel,
+
+		logger: logger,
 		bufferPool: sync.Pool{New: func() any {
 			b := make([]byte, 4096)
 			return &b
 		}},
+		stringSerializer: stringSer,
 	}
 	reg, err := NewRegistry(ns)
 	if err != nil {
@@ -68,9 +80,9 @@ func (ns *Namespace) Context() context.Context {
 }
 
 func (ns *Namespace) GetService(name string, ctx context.Context) (string, error) {
-	return ns.reg.Lookup(ctx, globals.ZERO_CONF_SERVICE_PREFIX+name)
+	return ns.reg.Lookup(ctx, name)
 }
 
 func (ns *Namespace) GetPublisher(name string, ctx context.Context) (string, error) {
-	return ns.reg.Lookup(ctx, globals.ZERO_CONF_PUBLISHER_PREFIX+name)
+	return ns.reg.Lookup(ctx, name)
 }

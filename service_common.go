@@ -42,11 +42,11 @@ func generateService[K any, V any](namespace *Namespace, name string) (*mad.Mad[
 	}
 
 	server, err := zeroconf.Register(
-		globals.ZERO_CONF_SERVICE_PREFIX+name,
-		namespace.Name()+globals.ZERO_CONF_TYPE,
+		name,
+		namespace.Name()+globals.ZERO_CONF_NODE_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Addr().(*net.UDPAddr).Port,
-		[]string{"id=spine_service_" + name},
+		[]string{"type=" + globals.ZERO_CONF_SERVICE},
 		nil,
 	)
 
@@ -90,7 +90,7 @@ func establishConnection(conn io.ReadWriteCloser, keyCode []byte, valueCode []by
 	return err
 }
 
-func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keySerializer *mad.Mad[K], valueSerializer *mad.Mad[V], errorSerializer *mad.Mad[string], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
+func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keySerializer *mad.Mad[K], valueSerializer *mad.Mad[V], stringSerializer *mad.Mad[string], buf []byte, processRequest func(K) serviceOutput[V], logger *slog.Logger) {
 
 	defer conn.Close()
 	err := establishConnection(conn, []byte(keySerializer.Code()), []byte(valueSerializer.Code()), buf, logger)
@@ -105,43 +105,53 @@ func handleCallerRequest[K any, V any](conn io.ReadWriteCloser, keySerializer *m
 			return
 		}
 
-		if buf[0] == globals.PING_CODE {
+		switch buf[0] {
+		case globals.PING_CODE:
 			conn.Write([]byte{globals.PONG_CODE})
-			continue
-		}
 
-		// might change in future if we add more operation codes
-		if buf[0] != globals.SERVICE_REQUEST {
-			logger.Error("received invalid operation code", "error", err)
-			conn.Write([]byte{globals.ERROR_INVALID_OPERATION_CODE})
-			continue
-		}
+		case globals.SERVICE_REQUEST:
+			var key K
+			err = keySerializer.Decode(buf[1:n], &key)
+			if err != nil {
+				logger.Error("unable to decode key", "error", err)
+				conn.Write([]byte{globals.ERROR_SERIALIZER_ERROR_CODE})
+				continue
+			}
 
-		var key K
-		err = keySerializer.Decode(buf[1:n], &key)
-		if err != nil {
-			logger.Error("unable to decode key", "error", err)
-			continue
-		}
+			res := processRequest(key)
+			if res.err != nil {
+				logger.Error("handler failed", "error", err)
+				errMsg := res.err.Error()
+				buf[0] = globals.ERROR_SERVICE_ERROR_CODE
+				stringSerializer.Encode(&errMsg, buf[1:])
+				_, err = conn.Write(buf[:stringSerializer.GetRequiredSize(&errMsg)])
+				if err != nil {
+					logger.Error("failed to write from connection", "error", err)
+					return
+				}
+			}
 
-		res := processRequest(key)
-		if res.err != nil {
-			logger.Error("handler failed", "error", err)
-			errMsg := res.err.Error()
-			buf[0] = globals.ERROR_SERVICE_ERROR_CODE
-			errorSerializer.Encode(&errMsg, buf[1:])
-			_, err = conn.Write(buf)
+			valueSerializer.Encode(&res.data, buf)
+			_, err = conn.Write(buf[:valueSerializer.GetRequiredSize(&res.data)])
 			if err != nil {
 				logger.Error("failed to write from connection", "error", err)
 				return
 			}
+
+		default:
+			logger.Error("received invalid operation code", "error", err)
+			conn.Write([]byte{globals.ERROR_INVALID_OPERATION_CODE})
 		}
 
-		valueSerializer.Encode(&res.data, buf)
-		_, err = conn.Write(buf[:valueSerializer.GetRequiredSize(&res.data)])
-		if err != nil {
-			logger.Error("failed to write from connection", "error", err)
-			return
-		}
 	}
+}
+
+type serviceRequest[K any, V any] struct {
+	input  K
+	output chan serviceOutput[V]
+}
+
+type serviceOutput[V any] struct {
+	data V
+	err  error
 }
