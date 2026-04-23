@@ -24,7 +24,7 @@ const ERROR_HANDLER_INTERNAL_ERROR_CODE uint8 = 255
 // Zero conf
 const ZERO_CONF_PUBLISHER = "publisher"
 const ZERO_CONF_SERVICE = "service"
-const ZERO_CONF_NODE_TYPE = "_spine._tcp"
+const ZERO_CONF_NODE_TYPE = "._spine._tcp"
 const ZERO_CONF_NAMESPACE_TYPE = "_namespace_.spine._tcp"
 const ZERO_CONF_DOMAIN = "local."
 

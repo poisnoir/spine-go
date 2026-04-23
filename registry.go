@@ -43,7 +43,7 @@ func (r *Registry) Lookup(ctx context.Context, name string) (string, error) {
 
 	// Use a buffer of 1 to prevent goroutine leaks
 	entries := make(chan *zeroconf.ServiceEntry, 1)
-	if err := r.resolver.Lookup(ctx, name, r.name+globals.ZERO_CONF_NODE_TYPE, globals.ZERO_CONF_DOMAIN, entries); err != nil {
+	if err := r.resolver.Lookup(ctx, name, "_"+r.name+globals.ZERO_CONF_NODE_TYPE, globals.ZERO_CONF_DOMAIN, entries); err != nil {
 		return "", err
 	}
 

@@ -43,7 +43,7 @@ func generateService[K any, V any](namespace *Namespace, name string) (*mad.Mad[
 
 	server, err := zeroconf.Register(
 		name,
-		namespace.Name()+globals.ZERO_CONF_NODE_TYPE,
+		"_"+namespace.Name()+globals.ZERO_CONF_NODE_TYPE,
 		globals.ZERO_CONF_DOMAIN,
 		listener.Addr().(*net.UDPAddr).Port,
 		[]string{"type=" + globals.ZERO_CONF_SERVICE},
